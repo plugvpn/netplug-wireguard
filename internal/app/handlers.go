@@ -1250,10 +1250,8 @@ func (h *Handlers) UserUpdatePost(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		existingAllowed sql.NullString
-		existingPriv    sql.NullString
-		existingPSK     sql.NullString
 	)
-	err := h.svc.DB.QueryRow(`SELECT allowed_ips, private_key, preshared_key FROM vpn_users WHERE id = ? LIMIT 1`, id).Scan(&existingAllowed, &existingPriv, &existingPSK)
+	err := h.svc.DB.QueryRow(`SELECT allowed_ips FROM vpn_users WHERE id = ? LIMIT 1`, id).Scan(&existingAllowed)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -1295,36 +1293,33 @@ func (h *Handlers) UserUpdatePost(w http.ResponseWriter, r *http.Request) {
 		isEnabled = 1
 	}
 
-	// Allow setting keys only if they were not previously set (parity with original UI behavior).
+	// Allow updating keys and PSK at any time (client configs must be updated to match).
 	privateKey := strings.TrimSpace(r.FormValue("private_key"))
 	publicKey := strings.TrimSpace(r.FormValue("public_key"))
 	psk := strings.TrimSpace(r.FormValue("preshared_key"))
 
-	updatePriv := any(nil)
-	updatePub := any(nil)
-	updatePSK := any(nil)
+	var updatePriv any = nil
+	var updatePub any = nil
+	var updatePSK any = nil
 
-	if !existingPriv.Valid || strings.TrimSpace(existingPriv.String) == "" {
-		if privateKey != "" {
-			derivedPub, err := wireguard.DerivePublicKey(privateKey)
-			if err != nil {
-				w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Invalid private key."}}`)
-				http.Error(w, "invalid private key", http.StatusBadRequest)
-				return
-			}
-			if publicKey != "" && publicKey != derivedPub {
-				w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Public key does not match this private key."}}`)
-				http.Error(w, "public key mismatch", http.StatusBadRequest)
-				return
-			}
-			updatePriv = privateKey
-			updatePub = derivedPub
+	if privateKey != "" {
+		derivedPub, err := wireguard.DerivePublicKey(privateKey)
+		if err != nil {
+			w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Invalid private key."}}`)
+			http.Error(w, "invalid private key", http.StatusBadRequest)
+			return
 		}
+		if publicKey != "" && publicKey != derivedPub {
+			w.Header().Set("HX-Trigger", `{"toast":{"type":"danger","message":"Public key does not match this private key."}}`)
+			http.Error(w, "public key mismatch", http.StatusBadRequest)
+			return
+		}
+		updatePriv = privateKey
+		updatePub = derivedPub
 	}
-	if !existingPSK.Valid || strings.TrimSpace(existingPSK.String) == "" {
-		if psk != "" {
-			updatePSK = psk
-		}
+
+	if psk != "" {
+		updatePSK = psk
 	}
 
 	_, err = h.svc.DB.Exec(`
