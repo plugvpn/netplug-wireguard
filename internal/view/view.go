@@ -42,6 +42,7 @@ func parse() (*template.Template, error) {
 		funcMap := template.FuncMap{
 			"humanBytes":  humanBytes,
 			"humanUptime": humanUptime,
+			"addInt64":    addInt64,
 			"lower":       strings.ToLower,
 			"hasPrefix":   strings.HasPrefix,
 			"initial": func(s string) string {

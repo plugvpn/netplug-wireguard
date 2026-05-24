@@ -181,55 +181,6 @@
       }
     }, 0);
   })();
-
-  async function modalGenerateKeys() {
-    const res = await fetch('/api/users/generate-keys', { method: 'POST', credentials: 'same-origin' });
-    if (!res.ok) return;
-    const j = await res.json();
-    document.getElementById('modal_private_key').value = j.privateKey || '';
-    document.getElementById('modal_public_key').value = j.publicKey || '';
-    try { lucide.createIcons(); } catch(e) {}
-  }
-
-  async function modalDerivePublicKey() {
-    const priv = document.getElementById('modal_private_key').value || '';
-    if (!priv) {
-      document.getElementById('modal_public_key').value = '';
-      return;
-    }
-    const res = await fetch('/api/users/derive-public-key', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ privateKey: priv })
-    });
-    if (!res.ok) {
-      document.getElementById('modal_public_key').value = '';
-      return;
-    }
-    const j = await res.json();
-    document.getElementById('modal_public_key').value = j.publicKey || '';
-  }
-
-  async function modalGeneratePSK() {
-    const res = await fetch('/api/users/generate-psk', { method: 'POST', credentials: 'same-origin' });
-    if (!res.ok) return;
-    const j = await res.json();
-    document.getElementById('modal_psk').value = j.presharedKey || '';
-    try { lucide.createIcons(); } catch(e) {}
-  }
-
-  function modalCopy(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    navigator.clipboard.writeText(el.value || '').catch(function(){});
-  }
-
-  function modalTogglePk() {
-    const el = document.getElementById('modal_private_key');
-    if (!el) return;
-    el.type = (el.type === 'password') ? 'text' : 'password';
-  }
 </script>
 {{end}}
 

@@ -209,6 +209,73 @@
         if (npMainSwapTarget(evt.detail)) setPageLoading(false);
       });
 
+      async function modalGenerateKeys() {
+        const res = await fetch('/api/users/generate-keys', { method: 'POST', credentials: 'same-origin' });
+        if (!res.ok) return;
+        const j = await res.json();
+        var pk = document.getElementById('modal_private_key');
+        var pub = document.getElementById('modal_public_key');
+        if (pk) pk.value = j.privateKey || '';
+        if (pub) pub.value = j.publicKey || '';
+        try { lucide.createIcons(); } catch (e) {}
+      }
+
+      async function modalDerivePublicKey() {
+        var pkEl = document.getElementById('modal_private_key');
+        var pubEl = document.getElementById('modal_public_key');
+        if (!pkEl || !pubEl) return;
+        var priv = pkEl.value || '';
+        if (!priv) {
+          pubEl.value = '';
+          return;
+        }
+        const res = await fetch('/api/users/derive-public-key', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ privateKey: priv })
+        });
+        if (!res.ok) {
+          pubEl.value = '';
+          return;
+        }
+        const j = await res.json();
+        pubEl.value = j.publicKey || '';
+      }
+
+      async function modalGeneratePSK() {
+        const res = await fetch('/api/users/generate-psk', { method: 'POST', credentials: 'same-origin' });
+        if (!res.ok) return;
+        const j = await res.json();
+        var psk = document.getElementById('modal_psk');
+        if (psk) psk.value = j.presharedKey || '';
+        try { lucide.createIcons(); } catch (e) {}
+      }
+
+      function modalCopy(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var val = el.value || '';
+        if (!val && el.disabled) {
+          val = el.getAttribute('value') || '';
+        }
+        navigator.clipboard.writeText(val).catch(function () {});
+      }
+
+      function modalTogglePk() {
+        modalToggleSecret('modal_private_key');
+      }
+
+      function modalTogglePsk() {
+        modalToggleSecret('modal_psk');
+      }
+
+      function modalToggleSecret(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.type = (el.type === 'password') ? 'text' : 'password';
+      }
+
       var __bwChart = null;
       async function initBandwidthChart() {
         var canvas = document.getElementById('bandwidth-chart');

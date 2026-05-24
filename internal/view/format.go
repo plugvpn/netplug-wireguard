@@ -38,3 +38,7 @@ func humanBytes(n any) string {
 	return fmt.Sprintf("%.2f TiB", v/float64(tib))
 }
 
+func addInt64(a, b int64) int64 {
+	return a + b
+}
+

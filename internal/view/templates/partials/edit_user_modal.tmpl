@@ -58,8 +58,7 @@
           <button
             type="button"
             onclick="modalGenerateKeys()"
-            class="inline-flex items-center gap-1 rounded bg-emerald-600/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            {{if or .PrivateKey .ImportedNoPrivKey}}disabled{{end}}
+            class="inline-flex items-center gap-1 rounded bg-emerald-600/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-600/30"
           >
             <i data-lucide="key-round" class="h-3.5 w-3.5" style="stroke-width:1.5"></i>
             Generate Keys
@@ -71,20 +70,20 @@
             name="private_key"
             type="password"
             value="{{.PrivateKey}}"
-            class="w-full h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 pr-20 font-mono text-[11px] text-gray-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:bg-[var(--np-field)] disabled:text-gray-400"
-            {{if .PrivateKey}}disabled{{end}}
+            autocomplete="off"
+            class="w-full h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 pr-20 font-mono text-[11px] text-gray-100 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
           <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <button type="button" onclick="modalTogglePk()" class="rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200">
+            <button type="button" onclick="modalTogglePk()" class="rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200" title="Show/hide private key">
               <i data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
             </button>
-            <button type="button" onclick="modalCopy('modal_private_key')" class="rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200">
+            <button type="button" onclick="modalCopy('modal_private_key')" class="rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200" title="Copy private key">
               <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
             </button>
           </div>
         </div>
         <div class="mt-1 text-[11px] text-gray-500">
-          {{if .PrivateKey}}Private key cannot be changed after it has been set.{{else if .ImportedNoPrivKey}}Imported peer: paste the client private key that matches the stored public key. Generate Keys is disabled so the peer is not accidentally rotated.{{else}}WireGuard private key (auto-generated or manually entered){{end}}
+          {{if .ImportedNoPrivKey}}Imported peer: paste the client private key or generate a new key pair (this updates the stored public key).{{else if .PrivateKey}}Use the eye icon to reveal the stored key. Generating new keys rotates this peer — clients must update their config.{{else}}WireGuard private key (auto-generated or manually entered){{end}}
         </div>
       </div>
 
@@ -106,8 +105,7 @@
           <button
             type="button"
             onclick="modalGeneratePSK()"
-            class="inline-flex items-center gap-1 rounded bg-purple-600/20 px-2.5 py-1 text-[11px] font-medium text-purple-300 hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            {{if .PresharedKey}}disabled{{end}}
+            class="inline-flex items-center gap-1 rounded bg-purple-600/20 px-2.5 py-1 text-[11px] font-medium text-purple-300 hover:bg-purple-600/30"
           >
             <i data-lucide="sparkles" class="h-3.5 w-3.5" style="stroke-width:1.5"></i>
             Generate PSK
@@ -117,17 +115,23 @@
           <input
             id="modal_psk"
             name="preshared_key"
+            type="password"
             value="{{.PresharedKey}}"
             placeholder="Optional: enhance security with PSK"
-            class="w-full h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 pr-10 font-mono text-[11px] text-gray-100 placeholder:text-gray-600 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:bg-[var(--np-field)] disabled:text-gray-400"
-            {{if .PresharedKey}}disabled{{end}}
+            autocomplete="off"
+            class="w-full h-9 rounded border border-[rgba(148,163,184,0.09)] bg-[#0a0d12] px-3 pr-20 font-mono text-[11px] text-gray-100 placeholder:text-gray-600 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
-          <button type="button" onclick="modalCopy('modal_psk')" class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200">
-            <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
-          </button>
+          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <button type="button" onclick="modalTogglePsk()" class="rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200" title="Show/hide preshared key">
+              <i data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+            </button>
+            <button type="button" onclick="modalCopy('modal_psk')" class="rounded p-1 text-gray-400 hover:bg-[#1e2d42] hover:text-gray-200" title="Copy preshared key">
+              <i data-lucide="copy" class="h-4 w-4" style="stroke-width:1.5"></i>
+            </button>
+          </div>
         </div>
         <div class="mt-1 text-[11px] text-gray-500">
-          {{if .PresharedKey}}Preshared key cannot be changed after it has been set.{{else}}Optional: Adds an extra layer of symmetric encryption for post-quantum security{{end}}
+          Optional: adds an extra layer of symmetric encryption. Generate or edit anytime — clients must match the saved PSK.
         </div>
       </div>
 
@@ -217,7 +221,7 @@
     try { lucide.createIcons(); } catch (e) {}
 
     const pk = document.getElementById('modal_private_key');
-    if (pk && !pk.disabled) {
+    if (pk) {
       let t = null;
       pk.addEventListener('input', function () {
         if (t) clearTimeout(t);
