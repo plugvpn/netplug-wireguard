@@ -16,6 +16,7 @@
     <link rel="icon" type="image/png" href="/plug-icon.png" />
     <link rel="stylesheet" href="/assets/app.css" />
     <script src="/assets/htmx.min.js"></script>
+    <script src="/assets/lucide.min.js"></script>
   </head>
   <body class="bg-slate-950 text-slate-100 min-h-screen px-4 py-10 antialiased">
     <div class="max-w-3xl mx-auto">
@@ -329,10 +330,23 @@
               if (!inp) return;
               var showPlain = inp.type === 'password';
               inp.type = showPlain ? 'text' : 'password';
-              tb.textContent = showPlain ? 'Hide' : 'Show';
               tb.setAttribute('aria-label', showPlain ? 'Hide private key' : 'Show private key');
               tb.setAttribute('aria-pressed', showPlain ? 'true' : 'false');
+              var icon = document.getElementById('setup-privkey-eye');
+              if (icon) {
+                icon.setAttribute('data-lucide', showPlain ? 'eye-off' : 'eye');
+                try { lucide.createIcons(); } catch (err) {}
+              }
             });
+
+            document.body.addEventListener('htmx:afterSwap', function (ev) {
+              var t = ev.detail && ev.detail.target;
+              if (t && t.id === 'setup-keys') {
+                try { lucide.createIcons(); } catch (err) {}
+              }
+            });
+
+            try { lucide.createIcons(); } catch (err) {}
 
             function bindHookToggle(btnId, panelId) {
               var btn = document.getElementById(btnId);

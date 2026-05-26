@@ -7,6 +7,7 @@
     <title>NetPlug UI - {{.Title}}</title>
     <link rel="icon" type="image/png" href="/plug-icon.png" />
     <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/lucide.min.js"></script>
   </head>
   <body class="min-h-screen flex items-center justify-center px-4 text-white antialiased bg-[radial-gradient(ellipse_at_center,_#141f2e_0%,_#0c111c_55%,_#0a0d12_100%)]">
     <div class="w-full max-w-[400px]">
@@ -50,14 +51,27 @@
           </div>
           <div>
             <label for="login-password" class="mb-1.5 block text-sm text-[#718096]">Password</label>
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              placeholder="Password"
-              autocomplete="current-password"
-              class="w-full rounded-lg border border-slate-700/35 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/30"
-            />
+            <div class="relative">
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                placeholder="Password"
+                autocomplete="current-password"
+                spellcheck="false"
+                class="w-full rounded-lg border border-slate-700/35 bg-slate-950/60 px-3.5 py-2.5 pr-11 text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/35"
+              />
+              <button
+                type="button"
+                id="login-password-toggle"
+                class="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                aria-label="Show password"
+                aria-pressed="false"
+                tabindex="-1"
+              >
+                <i id="login-password-eye" data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+              </button>
+            </div>
           </div>
           <button
             type="submit"
@@ -69,6 +83,25 @@
       </div>
     </div>
     {{template "partials/np_form_submit_busy.tmpl" .}}
+    <script>
+      (function () {
+        var toggle = document.getElementById('login-password-toggle');
+        var input = document.getElementById('login-password');
+        var icon = document.getElementById('login-password-eye');
+        if (!toggle || !input) return;
+        toggle.addEventListener('click', function () {
+          var show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          toggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+          toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+          if (icon) {
+            icon.setAttribute('data-lucide', show ? 'eye-off' : 'eye');
+            try { lucide.createIcons(); } catch (e) {}
+          }
+        });
+        try { lucide.createIcons(); } catch (e) {}
+      })();
+    </script>
   </body>
 </html>
 {{end}}

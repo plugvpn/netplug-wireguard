@@ -153,7 +153,11 @@ func WriteWireGuardConfig(sqlDB *sql.DB, dataDir string) error {
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	ensureConfigPermissions(path)
+	return nil
 }
 
 func writeHook(buf *bytes.Buffer, key string, value string) {

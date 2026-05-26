@@ -82,7 +82,8 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
+	// WireGuard backup encryption (scrypt) can take longer than typical API calls.
+	r.Use(middleware.Timeout(90 * time.Second))
 	r.Use(sessionManager.LoadAndSave)
 
 	r.Handle("/static/*", http.StripPrefix("/static/", webstatic.Handler()))

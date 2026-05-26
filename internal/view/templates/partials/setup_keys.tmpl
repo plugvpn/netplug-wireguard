@@ -1,18 +1,32 @@
 {{define "partials/setup_keys.tmpl"}}
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div class="relative sm:col-span-2">
+  <div class="sm:col-span-2">
     <label class="block text-xs text-slate-400 mb-1" for="setup_private_key">Server private key</label>
-    <input id="setup_private_key" name="private_key" type="password" autocomplete="off"
-      value="{{.PrivateKey}}"
-      class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 pr-24 font-mono text-xs" />
-    <button type="button" id="setup-privkey-toggle"
-      class="absolute right-2 top-[1.85rem] rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-slate-200 transition-colors hover:bg-slate-800"
-      aria-label="Show private key" aria-pressed="false">Show</button>
+    <div class="relative">
+      <input
+        id="setup_private_key"
+        name="private_key"
+        type="password"
+        autocomplete="off"
+        spellcheck="false"
+        value="{{.PrivateKey}}"
+        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 pr-11 font-mono text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+      />
+      <button
+        type="button"
+        id="setup-privkey-toggle"
+        class="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+        aria-label="Show private key"
+        aria-pressed="false"
+      >
+        <i id="setup-privkey-eye" data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+      </button>
+    </div>
   </div>
   <div>
     <label class="block text-xs text-slate-400 mb-1">Server public key</label>
     <input name="public_key" value="{{.PublicKey}}" readonly
-      class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 font-mono text-xs" />
+      class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 font-mono text-xs text-slate-100" />
   </div>
 </div>
 {{end}}
