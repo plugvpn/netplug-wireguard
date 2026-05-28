@@ -1,0 +1,51 @@
+{{define "partials/wg_backup_modal.tmpl"}}
+<div id="wg-backup-modal" class="fixed inset-0 z-50 hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="wg-backup-modal-title">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-wg-modal-close></div>
+  <div class="relative w-full max-w-md rounded-lg border border-gray-200 bg-white shadow-xl dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)]">
+    <div class="flex items-start justify-between border-b border-gray-200 px-5 py-4 dark:border-[rgba(148,163,184,0.085)]">
+      <div>
+        <h4 id="wg-backup-modal-title" class="text-sm font-semibold text-gray-900 dark:text-gray-100">Create backup</h4>
+        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Full server export (.npbk)</p>
+      </div>
+      <button type="button" class="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-[var(--np-muted)]" data-wg-modal-close aria-label="Close">
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+    <form id="wg-backup-form" class="px-5 py-4" data-no-submit-busy novalidate>
+      <p class="mb-4 text-xs text-gray-600 dark:text-gray-400">
+        Includes configuration, keys, peers, groups, and queue settings. Leave password empty for an unencrypted file.
+      </p>
+      <div>
+        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300" for="backup_password">Password <span class="font-normal text-gray-400">(optional)</span></label>
+        <div class="relative">
+          <input
+            id="backup_password"
+            name="backup_password"
+            type="password"
+            autocomplete="new-password"
+            spellcheck="false"
+            class="w-full rounded border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100"
+          />
+          <button
+            type="button"
+            id="backup-password-toggle"
+            class="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-200"
+            aria-label="Show password"
+            aria-pressed="false"
+          >
+            <i id="backup-password-eye" data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </button>
+        </div>
+      </div>
+      <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Minimum 4 characters if set. Password is not stored on the server.</p>
+      <div class="mt-5 flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-[rgba(148,163,184,0.085)]">
+        <button type="button" class="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-[rgba(148,163,184,0.085)] dark:text-gray-300 dark:hover:bg-[var(--np-muted)]" data-wg-modal-close>Cancel</button>
+        <button type="submit" class="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
+          <i data-lucide="download" class="h-4 w-4"></i>
+          Download
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

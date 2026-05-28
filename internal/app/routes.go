@@ -80,6 +80,9 @@ func RegisterRoutes(r chi.Router, svc *Services) {
 		r.Get("/ui/wireguard", h.WireGuardPage)
 		r.Post("/ui/wireguard/save", h.WireGuardSavePost)
 		r.Post("/ui/wireguard/reload", h.WireGuardReloadPost)
+		r.Post("/ui/wireguard/restart", h.WireGuardRestartPost)
+		r.Post("/ui/wireguard/backup", h.WireGuardBackupPost)
+		r.Post("/ui/wireguard/restore", h.WireGuardRestorePost)
 		r.Get("/ui/settings", h.SettingsPage)
 
 		// HTMX partials

@@ -1,0 +1,58 @@
+{{define "partials/wg_restore_modal.tmpl"}}
+<div id="wg-restore-modal" class="fixed inset-0 z-50 hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="wg-restore-modal-title">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-wg-modal-close></div>
+  <div class="relative w-full max-w-md rounded-lg border border-gray-200 bg-white shadow-xl dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)]">
+    <div class="flex items-start justify-between border-b border-gray-200 px-5 py-4 dark:border-[rgba(148,163,184,0.085)]">
+      <div class="min-w-0 pr-2">
+        <h4 id="wg-restore-modal-title" class="text-sm font-semibold text-gray-900 dark:text-gray-100">Restore backup</h4>
+        <p id="wg-restore-filename" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400"></p>
+      </div>
+      <button type="button" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-[var(--np-muted)]" data-wg-modal-close aria-label="Close">
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+    <form id="wg-restore-form" class="px-5 py-4" data-no-submit-busy novalidate>
+      <div id="wg-restore-password-wrap" class="mb-4 hidden">
+        <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300" for="restore_backup_password">Backup password</label>
+        <div class="relative">
+          <input
+            id="restore_backup_password"
+            name="backup_password"
+            type="password"
+            autocomplete="current-password"
+            spellcheck="false"
+            class="w-full rounded border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100"
+          />
+          <button
+            type="button"
+            id="restore-password-toggle"
+            class="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-200"
+            aria-label="Show password"
+            aria-pressed="false"
+          >
+            <i id="restore-password-eye" data-lucide="eye" class="h-4 w-4" style="stroke-width:1.5"></i>
+          </button>
+        </div>
+        <p class="mt-1 text-xs text-amber-700 dark:text-amber-400">This backup is encrypted. Enter the password used when it was created.</p>
+      </div>
+      <div id="wg-restore-options-wrap" class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="replace_peers" class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+          Replace existing peers
+        </label>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="replace_groups" class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+          Replace groups and queue settings
+        </label>
+      </div>
+      <div class="mt-5 flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-[rgba(148,163,184,0.085)]">
+        <button type="button" class="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-[rgba(148,163,184,0.085)] dark:text-gray-300 dark:hover:bg-[var(--np-muted)]" data-wg-modal-close>Cancel</button>
+        <button type="submit" class="inline-flex items-center gap-2 rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500">
+          <i data-lucide="upload" class="h-4 w-4"></i>
+          Restore
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

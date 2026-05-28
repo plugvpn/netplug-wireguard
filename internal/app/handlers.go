@@ -1142,8 +1142,10 @@ func (h *Handlers) UserCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	if err := h.applyWireGuardFromDB(); err != nil {
+		http.Redirect(w, r, "/ui/users?msgType=warning&msg="+urlQueryEscape("User created but WireGuard reload failed: "+err.Error()), http.StatusFound)
+		return
+	}
 	h.reconcilePCQ()
 
 	http.Redirect(w, r, "/ui/users", http.StatusFound)
@@ -1341,13 +1343,18 @@ func (h *Handlers) UserUpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
-	h.reconcilePCQ()
+	toastType := "success"
+	toastMsg := "Changes saved."
+	if err := h.applyWireGuardFromDB(); err != nil {
+		toastType = "warning"
+		toastMsg = "Saved to database but WireGuard reload failed: " + err.Error()
+	} else {
+		h.reconcilePCQ()
+	}
 
 	// Close modal and show a toast; then refresh list.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("HX-Trigger", `{"toast":{"type":"success","message":"Changes saved."},"usersReload":true}`)
+	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"toast":{"type":"%s","message":%q},"usersReload":true}`, toastType, toastMsg))
 	_, _ = w.Write([]byte(""))
 }
 
@@ -1392,16 +1399,19 @@ func (h *Handlers) UserDeletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
-	h.reconcilePCQ()
-
+	toastType := "success"
 	msg := "User deleted."
-	if strings.TrimSpace(username) != "" {
-		msg = `User "` + username + `" deleted.`
+	if err := h.applyWireGuardFromDB(); err != nil {
+		toastType = "warning"
+		msg = "User deleted but WireGuard reload failed: " + err.Error()
+	} else {
+		h.reconcilePCQ()
+		if strings.TrimSpace(username) != "" {
+			msg = `User "` + username + `" deleted.`
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("HX-Trigger", `{"toast":{"type":"success","message":`+strconv.Quote(msg)+`},"usersReload":true}`)
+	w.Header().Set("HX-Trigger", `{"toast":{"type":"`+toastType+`","message":`+strconv.Quote(msg)+`},"usersReload":true}`)
 	_, _ = w.Write([]byte(""))
 }
 
@@ -1563,8 +1573,10 @@ func (h *Handlers) UserTogglePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "update failed", http.StatusInternalServerError)
 		return
 	}
-	_ = wireguard.WriteWireGuardConfig(h.svc.DB, h.svc.Config.DataDir)
-	_ = wireguard.ApplyConfig(h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	if err := h.applyWireGuardFromDB(); err != nil {
+		http.Redirect(w, r, "/ui/users?msgType=warning&msg="+urlQueryEscape("User updated but WireGuard reload failed: "+err.Error()), http.StatusFound)
+		return
+	}
 	h.reconcilePCQ()
 
 	http.Redirect(w, r, "/ui/users", http.StatusFound)
@@ -1706,6 +1718,122 @@ func (h *Handlers) WireGuardReloadPost(w http.ResponseWriter, r *http.Request) {
 	}
 	h.reconcilePCQ()
 	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
+}
+
+func (h *Handlers) WireGuardRestartPost(w http.ResponseWriter, r *http.Request) {
+	res, err := wireguard.RestartWireGuard(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface)
+	if err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	h.reconcilePCQ()
+	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
+}
+
+func (h *Handlers) wireguardBackupWantsJSON(r *http.Request) bool {
+	return r.Header.Get("X-Netplug-Backup") == "1"
+}
+
+func (h *Handlers) wireguardBackupError(w http.ResponseWriter, r *http.Request, msg string, code int) {
+	if h.wireguardBackupWantsJSON(r) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(code)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+		return
+	}
+	http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(msg), http.StatusFound)
+}
+
+func (h *Handlers) WireGuardBackupPost(w http.ResponseWriter, r *http.Request) {
+	password, err := h.parseWireGuardBackupPassword(r)
+	if err != nil {
+		h.wireguardBackupError(w, r, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if password != "" {
+		if err := wireguard.ValidateBackupPassword(password); err != nil {
+			h.wireguardBackupError(w, r, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	data, err := wireguard.ExportBackupArchive(h.svc.DB, password)
+	if err != nil {
+		h.wireguardBackupError(w, r, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	encrypted := password != ""
+	filename := fmt.Sprintf("netplug-backup-%s.npbk", time.Now().UTC().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	if encrypted {
+		w.Header().Set("X-Netplug-Backup-Encrypted", "1")
+	}
+	_, _ = w.Write(data)
+}
+
+func (h *Handlers) parseWireGuardBackupPassword(r *http.Request) (string, error) {
+	if h.wireguardBackupWantsJSON(r) || strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		var payload struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			return "", errors.New("invalid backup request")
+		}
+		return strings.TrimSpace(payload.Password), nil
+	}
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			return "", errors.New("invalid backup request")
+		}
+	} else if err := r.ParseForm(); err != nil {
+		return "", errors.New("invalid backup request")
+	}
+	return strings.TrimSpace(r.FormValue("backup_password")), nil
+}
+
+func (h *Handlers) WireGuardRestorePost(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Invalid backup upload."), http.StatusFound)
+		return
+	}
+	f, _, err := r.FormFile("backup_file")
+	if err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Backup file is required."), http.StatusFound)
+		return
+	}
+	defer f.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(f, 32<<20))
+	if err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Could not read backup file."), http.StatusFound)
+		return
+	}
+	password := strings.TrimSpace(r.FormValue("backup_password"))
+	file, err := wireguard.ParseBackupArchive(raw, password)
+	if err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+
+	opts := wireguard.RestoreOptions{
+		ReplacePeers:  r.FormValue("replace_peers") == "on",
+		ReplaceGroups: r.FormValue("replace_groups") == "on",
+	}
+	if err := wireguard.RestoreBackup(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface, file, opts); err != nil {
+		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	h.reconcilePCQ()
+	http.Redirect(w, r, "/ui/wireguard?msgType=success&msg="+urlQueryEscape("Backup restored and WireGuard restarted."), http.StatusFound)
+}
+
+func (h *Handlers) applyWireGuardFromDB() error {
+	return wireguard.SyncFromDB(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface)
 }
 
 func (h *Handlers) WireGuardAPIGet(w http.ResponseWriter, r *http.Request) {

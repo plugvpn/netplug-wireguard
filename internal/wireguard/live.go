@@ -15,7 +15,7 @@ func GetLiveStatus(configuredInterface string) WireGuardLiveStatus {
 	if err != nil || strings.TrimSpace(raw) == "" {
 		return WireGuardLiveStatus{Up: false}
 	}
-	actual := pickInterface(raw, configuredInterface)
+	actual := pickInterface(raw, configuredInterface, configuredInterface)
 	if actual == "" {
 		return WireGuardLiveStatus{Up: false}
 	}

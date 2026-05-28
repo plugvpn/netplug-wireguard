@@ -136,7 +136,27 @@ func ReloadWireGuard(sqlDB *sql.DB, dataDir string, configuredInterface string) 
 	if err := ApplyConfig(dataDir, configuredInterface); err != nil {
 		return SaveResult{}, err
 	}
-	return SaveResult{Type: "success", Text: "WireGuard configuration reloaded.", WroteConfig: true, Applied: true}, nil
+	return SaveResult{
+		Type:        "success",
+		Text:        "WireGuard reloaded. Peer and key changes are now active.",
+		WroteConfig: true,
+		Applied:     true,
+	}, nil
+}
+
+func RestartWireGuard(sqlDB *sql.DB, dataDir string, configuredInterface string) (SaveResult, error) {
+	if err := WriteWireGuardConfig(sqlDB, dataDir); err != nil {
+		return SaveResult{}, err
+	}
+	if err := RestartConfig(dataDir, configuredInterface); err != nil {
+		return SaveResult{}, err
+	}
+	return SaveResult{
+		Type:        "success",
+		Text:        "WireGuard restarted. All settings are now active.",
+		WroteConfig: true,
+		Applied:     true,
+	}, nil
 }
 
 func loadServer(sqlDB *sql.DB) (WireGuardServer, error) {

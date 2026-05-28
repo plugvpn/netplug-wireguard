@@ -108,6 +108,12 @@
       });
     });
 
+    window.addEventListener("pageshow", function () {
+      document.querySelectorAll("button.np-btn-busy, input.np-btn-busy").forEach(function (b) {
+        setBusy(b, false);
+      });
+    });
+
     window.npSetSubmitBusy = setBusy;
   })();
 </script>
