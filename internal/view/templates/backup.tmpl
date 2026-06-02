@@ -1,0 +1,349 @@
+{{define "backup.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "backup.content"}}
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Backup &amp; Restore</h2>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Export or import full NetPlug server state on this or another instance
+        </p>
+      </div>
+
+      <div class="rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-2">
+            <i data-lucide="archive" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Server backup</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="wg-btn-backup" class="inline-flex items-center gap-2 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white dark:border-[rgba(148,163,184,0.085)] dark:text-gray-300 dark:hover:bg-[var(--np-muted)]">
+              <i data-lucide="download" class="h-4 w-4"></i>
+              Backup
+            </button>
+            <button type="button" id="wg-btn-restore" class="inline-flex items-center gap-2 rounded border border-amber-300/80 px-4 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-50 dark:border-amber-900 dark:text-amber-200 dark:hover:bg-amber-950">
+              <i data-lucide="upload" class="h-4 w-4"></i>
+              Restore
+            </button>
+          </div>
+        </div>
+        <p class="mt-4 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+          Backups include WireGuard configuration, keys, peers, groups, queue settings, and DNS rewrites.
+          Use an optional password to encrypt the <span class="font-mono text-gray-400">.npbk</span> file.
+        </p>
+        <input id="wg-restore-file-input" type="file" accept=".npbk,application/json" class="hidden" />
+      </div>
+
+      <div id="wg-modal-root" class="mt-6">
+        {{template "partials/wg_backup_modal.tmpl" .}}
+        {{template "partials/wg_restore_modal.tmpl" .}}
+      </div>
+    </div>
+  </div>
+
+  {{if .SaveMessage}}
+  <div class="border-t border-gray-200/90 bg-gray-50 px-8 py-4 dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)]">
+    <div class="text-sm font-medium {{if eq .SaveMessageType "success"}}text-emerald-600 dark:text-emerald-500{{else if eq .SaveMessageType "warning"}}text-amber-600 dark:text-amber-500{{else}}text-red-600 dark:text-red-500{{end}}">
+      {{.SaveMessage}}
+    </div>
+  </div>
+  {{end}}
+</div>
+
+<script>
+  (function () {
+    var ENCRYPTED_FORMAT = 'netplug-encrypted-backup-v1';
+
+    function isEncryptedBackupText(text) {
+      try {
+        var j = JSON.parse(String(text).trim());
+        return !!(j && j.format === ENCRYPTED_FORMAT && j.ciphertext);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function readBackupPasswordInput(id) {
+      var el = document.getElementById(id);
+      return el ? String(el.value || '').trim() : '';
+    }
+    var backupModal = document.getElementById('wg-backup-modal');
+    var restoreModal = document.getElementById('wg-restore-modal');
+    var backupForm = document.getElementById('wg-backup-form');
+    var restoreForm = document.getElementById('wg-restore-form');
+    var restoreFileInput = document.getElementById('wg-restore-file-input');
+    var pendingRestoreFile = null;
+    var pendingRestoreEncrypted = false;
+
+    function icons() {
+      try { lucide.createIcons(); } catch (e) {}
+    }
+
+    function openModal(el) {
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+      icons();
+    }
+
+    function closeModals() {
+      [backupModal, restoreModal].forEach(function (el) {
+        if (!el) return;
+        el.classList.add('hidden');
+        el.classList.remove('flex');
+      });
+      pendingRestoreFile = null;
+      pendingRestoreEncrypted = false;
+      if (restoreFileInput) restoreFileInput.value = '';
+    }
+
+    function resetRestorePasswordField() {
+      var inp = document.getElementById('restore_backup_password');
+      var btn = document.getElementById('restore-password-toggle');
+      var icon = document.getElementById('restore-password-eye');
+      if (inp) inp.type = 'password';
+      if (btn) {
+        btn.setAttribute('aria-label', 'Show password');
+        btn.setAttribute('aria-pressed', 'false');
+      }
+      if (icon) icon.setAttribute('data-lucide', 'eye');
+    }
+
+    var restorePwToggle = document.getElementById('restore-password-toggle');
+    if (restorePwToggle) {
+      restorePwToggle.addEventListener('click', function () {
+        var inp = document.getElementById('restore_backup_password');
+        var icon = document.getElementById('restore-password-eye');
+        if (!inp) return;
+        var show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        restorePwToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        restorePwToggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        if (icon) {
+          icon.setAttribute('data-lucide', show ? 'eye-off' : 'eye');
+          icons();
+        }
+      });
+    }
+
+    document.querySelectorAll('[data-wg-modal-close]').forEach(function (el) {
+      el.addEventListener('click', closeModals);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeModals();
+    });
+
+    var btnBackup = document.getElementById('wg-btn-backup');
+    if (btnBackup) {
+      btnBackup.addEventListener('click', function () {
+        if (backupForm) backupForm.reset();
+        resetBackupPasswordField();
+        openModal(backupModal);
+      });
+    }
+
+    var btnRestore = document.getElementById('wg-btn-restore');
+    if (btnRestore && restoreFileInput) {
+      btnRestore.addEventListener('click', function () {
+        restoreFileInput.click();
+      });
+      restoreFileInput.addEventListener('change', function () {
+        var file = restoreFileInput.files && restoreFileInput.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var text = String(reader.result || '');
+          if (!text.trim()) {
+            alert('Backup file is empty.');
+            restoreFileInput.value = '';
+            return;
+          }
+          var encrypted = isEncryptedBackupText(text);
+          if (!encrypted) {
+            try {
+              var plain = JSON.parse(text);
+              if (!plain || plain.version === undefined) {
+                alert('Invalid backup file.');
+                restoreFileInput.value = '';
+                return;
+              }
+            } catch (e) {
+              alert('Invalid backup file.');
+              restoreFileInput.value = '';
+              return;
+            }
+          }
+          pendingRestoreFile = file;
+          pendingRestoreEncrypted = encrypted;
+          var nameEl = document.getElementById('wg-restore-filename');
+          if (nameEl) nameEl.textContent = file.name;
+          var pwWrap = document.getElementById('wg-restore-password-wrap');
+          var pwInput = document.getElementById('restore_backup_password');
+          if (pwWrap) pwWrap.classList.toggle('hidden', !encrypted);
+          if (pwInput) {
+            pwInput.value = '';
+            pwInput.required = encrypted;
+          }
+          resetRestorePasswordField();
+          if (restoreForm) {
+            restoreForm.querySelectorAll('input[type="checkbox"]').forEach(function (cb) { cb.checked = false; });
+          }
+          openModal(restoreModal);
+          if (encrypted && pwInput) {
+            setTimeout(function () { pwInput.focus(); }, 50);
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    function validateBackupPassword() {
+      var p = readBackupPasswordInput('backup_password');
+      if (!p) return null;
+      if (p.length < 4) return 'Password must be at least 4 characters.';
+      return null;
+    }
+
+    function resetBackupPasswordField() {
+      var inp = document.getElementById('backup_password');
+      var btn = document.getElementById('backup-password-toggle');
+      var icon = document.getElementById('backup-password-eye');
+      if (inp) inp.type = 'password';
+      if (btn) {
+        btn.setAttribute('aria-label', 'Show password');
+        btn.setAttribute('aria-pressed', 'false');
+      }
+      if (icon) icon.setAttribute('data-lucide', 'eye');
+    }
+
+    var backupPwToggle = document.getElementById('backup-password-toggle');
+    if (backupPwToggle) {
+      backupPwToggle.addEventListener('click', function () {
+        var inp = document.getElementById('backup_password');
+        var icon = document.getElementById('backup-password-eye');
+        if (!inp) return;
+        var show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        backupPwToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        backupPwToggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        if (icon) {
+          icon.setAttribute('data-lucide', show ? 'eye-off' : 'eye');
+          icons();
+        }
+      });
+    }
+
+    if (backupForm) {
+      backupForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var pwErr = validateBackupPassword();
+        if (pwErr) {
+          alert(pwErr);
+          return;
+        }
+        var btn = backupForm.querySelector('button[type="submit"]');
+        var password = readBackupPasswordInput('backup_password');
+        if (window.npSetSubmitBusy) window.npSetSubmitBusy(btn, true);
+        fetch('/ui/backup/export', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Netplug-Backup': '1',
+          },
+          body: JSON.stringify({ password: password }),
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              return res.json().then(function (data) {
+                throw new Error((data && data.error) ? data.error : 'Backup failed');
+              }).catch(function (err) {
+                if (err && err.message) throw err;
+                throw new Error('Backup failed');
+              });
+            }
+            var cd = res.headers.get('Content-Disposition') || '';
+            if (cd.indexOf('attachment') === -1 && cd.indexOf('filename=') === -1) {
+              throw new Error('Unexpected response from server');
+            }
+            return res.blob().then(function (blob) {
+              if (!blob || blob.size === 0) throw new Error('Backup file is empty');
+              if (password && res.headers.get('X-Netplug-Backup-Encrypted') !== '1') {
+                throw new Error('Server returned an unencrypted backup. Rebuild the app and try again.');
+              }
+              var m = /filename="([^"]+)"/.exec(cd) || /filename=([^;\s]+)/.exec(cd);
+              var name = m ? m[1].replace(/"/g, '') : 'netplug-backup.npbk';
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement('a');
+              a.href = url;
+              a.download = name;
+              a.style.display = 'none';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+              closeModals();
+            });
+          })
+          .catch(function (err) {
+            alert((err && err.message) ? err.message : 'Backup failed');
+          })
+          .finally(function () {
+            if (window.npSetSubmitBusy) window.npSetSubmitBusy(btn, false);
+          });
+      });
+    }
+
+    if (restoreForm) {
+      restoreForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!pendingRestoreFile) {
+          alert('No backup file selected.');
+          return;
+        }
+        if (pendingRestoreEncrypted) {
+          var pwt = readBackupPasswordInput('restore_backup_password');
+          if (pwt.length < 4) {
+            alert('Enter the backup password (at least 4 characters).');
+            return;
+          }
+        }
+        var btn = restoreForm.querySelector('button[type="submit"]');
+        if (window.npSetSubmitBusy) window.npSetSubmitBusy(btn, true);
+        var fd = new FormData();
+        fd.append('backup_file', pendingRestoreFile, pendingRestoreFile.name);
+        if (pendingRestoreEncrypted) {
+          fd.append('backup_password', readBackupPasswordInput('restore_backup_password'));
+        }
+        restoreForm.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+          if (cb.checked) fd.append(cb.name, 'on');
+        });
+        fetch('/ui/backup/restore', { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function (res) {
+            if (res.redirected || (res.headers.get('Content-Type') || '').indexOf('text/html') !== -1) {
+              window.location.href = res.url || '/ui/backup';
+              return;
+            }
+            if (!res.ok) {
+              return res.text().then(function (t) { throw new Error(t || 'Restore failed'); });
+            }
+            window.location.href = '/ui/backup?msgType=success&msg=' + encodeURIComponent('Backup restored and WireGuard restarted.');
+          })
+          .catch(function (err) {
+            alert((err && err.message) ? err.message : 'Restore failed');
+          })
+          .finally(function () {
+            if (window.npSetSubmitBusy) window.npSetSubmitBusy(btn, false);
+          });
+      });
+    }
+  })();
+</script>
+{{end}}
+
+{{define "backup.header_right"}}{{end}}

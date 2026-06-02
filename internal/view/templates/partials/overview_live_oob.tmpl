@@ -1,0 +1,8 @@
+{{define "partials/overview_live_oob.tmpl"}}
+<div id="overview-connections" hx-swap-oob="innerHTML">
+{{template "overview_connections_card" .}}
+</div>
+<div id="overview-server" hx-swap-oob="innerHTML">
+{{template "overview_server_card" .}}
+</div>
+{{end}}

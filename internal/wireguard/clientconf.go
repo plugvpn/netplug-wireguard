@@ -66,7 +66,6 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 	}
 	var vc struct {
 		WireGuard struct {
-			DNS                 string `json:"dns"`
 			AllowedIPs          string `json:"allowedIps"`
 			PersistentKeepalive int    `json:"persistentKeepalive"`
 			MTU                 int    `json:"mtu"`
@@ -74,17 +73,25 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 	}
 	_ = json.Unmarshal(sys.VPNConfigJSON, &vc)
 
+	clientDNS, err := ClientDNS(sqlDB)
+	if err != nil {
+		return "", "", err
+	}
+
 	allowed := strings.TrimSpace(vc.WireGuard.AllowedIPs)
 	if allowed == "" {
 		allowed = "0.0.0.0/0, ::/0"
+	}
+	if clientDNS != "" && IsLinkLocalDNSHost(clientDNS) {
+		allowed = ensureAllowedContains(allowed, clientDNS+"/32")
 	}
 
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	b.WriteString(fmt.Sprintf("PrivateKey = %s\n", strings.TrimSpace(privKey.String)))
 	b.WriteString(fmt.Sprintf("Address = %s\n", userAddr))
-	if strings.TrimSpace(vc.WireGuard.DNS) != "" {
-		b.WriteString(fmt.Sprintf("DNS = %s\n", strings.TrimSpace(vc.WireGuard.DNS)))
+	if clientDNS != "" {
+		b.WriteString(fmt.Sprintf("DNS = %s\n", clientDNS))
 	}
 	if vc.WireGuard.MTU > 0 {
 		b.WriteString(fmt.Sprintf("MTU = %d\n", vc.WireGuard.MTU))
@@ -104,5 +111,22 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 
 	fn := fmt.Sprintf("%s.conf", username)
 	return b.String(), fn, nil
+}
+
+func ensureAllowedContains(allowed, prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return allowed
+	}
+	for _, part := range strings.Split(allowed, ",") {
+		if strings.TrimSpace(part) == prefix {
+			return allowed
+		}
+	}
+	allowed = strings.TrimSpace(allowed)
+	if allowed == "" {
+		return prefix
+	}
+	return allowed + ", " + prefix
 }
 

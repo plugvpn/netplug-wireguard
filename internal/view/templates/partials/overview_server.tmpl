@@ -1,0 +1,39 @@
+{{define "overview_server_card"}}
+<div class="rounded border border-gray-200/90 bg-gray-50 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none p-6">
+  <h2 class="mb-6 text-base font-normal text-gray-900 dark:text-gray-100">Server Details</h2>
+  <div class="space-y-4">
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">Server address</span>
+      <span class="text-sm font-normal text-gray-900 dark:text-gray-100">{{.Sys.ServerAddress}}</span>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">Access Server version</span>
+      <span class="text-sm font-normal text-gray-900 dark:text-gray-100">{{.Sys.Version}}</span>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">Operating System</span>
+      <span class="text-sm font-normal text-gray-900 dark:text-gray-100">{{.Sys.OSName}}</span>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">OS hostname</span>
+      <span class="text-sm font-mono text-xs text-gray-900 dark:text-gray-100">{{.Sys.Hostname}}</span>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">Uptime</span>
+      <span class="text-sm font-normal text-gray-900 dark:text-gray-100">{{.Sys.UptimeHuman}}</span>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">Accepting connections on</span>
+      <span class="text-sm font-normal text-gray-900 dark:text-gray-100">{{.Sys.AcceptingOn}}</span>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-gray-700 dark:text-gray-300">Port</span>
+      <span class="text-sm font-normal text-gray-900 dark:text-gray-100">{{.Sys.Ports}}</span>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "partials/overview_server.tmpl"}}
+{{template "overview_server_card" .}}
+{{end}}

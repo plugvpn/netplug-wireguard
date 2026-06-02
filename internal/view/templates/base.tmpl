@@ -139,7 +139,6 @@
           }
         } catch (e) {}
         try { lucide.createIcons(); } catch (e) {}
-        try { initBandwidthChart(); } catch (e) {}
         try { syncShellNav(); } catch (e) {}
       });
 
@@ -149,7 +148,12 @@
 
       document.addEventListener('htmx:afterSwap', function (evt) {
         try { lucide.createIcons(); } catch (e) {}
-        try { initBandwidthChart(); } catch (e) {}
+        try {
+          var t = evt.detail && evt.detail.target;
+          if (t && t.id === 'overview-transfer') {
+            initBandwidthChart();
+          }
+        } catch (e) {}
         try {
           if (evt.detail && evt.detail.target && evt.detail.target.id === 'np-main') {
             setPageLoading(false);
@@ -168,7 +172,8 @@
         document.querySelectorAll('#sidebar a.np-spa-link').forEach(function (a) {
           var href = a.getAttribute('href');
           if (!href) return;
-          var on = href === path || (href !== '/ui' && path.startsWith(href + '/'));
+          var hrefPath = href.split('#')[0].split('?')[0];
+          var on = hrefPath === path || (hrefPath !== '/ui' && path.startsWith(hrefPath + '/'));
           a.classList.toggle('np-active', on);
         });
       }
@@ -276,116 +281,10 @@
         el.type = (el.type === 'password') ? 'text' : 'password';
       }
 
-      var __bwChart = null;
-      async function initBandwidthChart() {
-        var canvas = document.getElementById('bandwidth-chart');
-        if (!canvas || !window.Chart) return;
-        var url = canvas.getAttribute('data-url');
-        if (!url) return;
-
-        // Ensure canvas has a height so Chart.js can render inside the card.
-        if (!canvas.style.height) canvas.style.height = '256px';
-        if (!canvas.style.width) canvas.style.width = '100%';
-
-        var res = await fetch(url, { credentials: 'same-origin' });
-        var history = [];
-        if (res.ok) {
-          try {
-            var json = await res.json();
-            history = (json && json.history) ? json.history : [];
-          } catch (e) {
-            history = [];
-          }
+      function initBandwidthChart() {
+        if (typeof window.__npLoadBandwidthChart === 'function') {
+          window.__npLoadBandwidthChart();
         }
-        if (!Array.isArray(history)) history = [];
-
-        // Always render something, even if the API has no rows yet.
-        var labels = history.length
-          ? history.map(function (p) { return p.day ? String(p.day) : ''; })
-          : Array.from({length: 31}, function(_, i) { return String(i + 1); });
-        var download = history.length
-          ? history.map(function (p) { return p.downloadTotal || 0; })
-          : Array.from({length: 31}, function() { return 0; });
-        var upload = history.length
-          ? history.map(function (p) { return p.uploadTotal || 0; })
-          : Array.from({length: 31}, function() { return 0; });
-
-        var ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        if (__bwChart) {
-          __bwChart.destroy();
-          __bwChart = null;
-        }
-
-        var g1 = ctx.createLinearGradient(0, 0, 0, canvas.height || 256);
-        g1.addColorStop(0, 'rgba(59,130,246,0.30)');
-        g1.addColorStop(1, 'rgba(59,130,246,0.00)');
-        var g2 = ctx.createLinearGradient(0, 0, 0, canvas.height || 256);
-        g2.addColorStop(0, 'rgba(16,185,129,0.30)');
-        g2.addColorStop(1, 'rgba(16,185,129,0.00)');
-
-        function formatBytes(bytes) {
-          var b = Number(bytes || 0);
-          var kb = b / 1024, mb = kb / 1024, gb = mb / 1024, tb = gb / 1024;
-          if (tb >= 1) return tb.toFixed(2) + ' TB';
-          if (gb >= 1) return gb.toFixed(2) + ' GB';
-          if (mb >= 1) return mb.toFixed(2) + ' MB';
-          if (kb >= 1) return kb.toFixed(2) + ' KB';
-          return b.toFixed(0) + ' B';
-        }
-
-        var isDark = document.documentElement.classList.contains('dark');
-        var grid = isDark ? 'rgba(42,63,92,0.45)' : 'rgba(229,231,235,0.8)';
-        var ticks = isDark ? '#9ca3af' : '#6b7280';
-
-        __bwChart = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [
-              { label: 'Download', data: download, borderColor: '#3b82f6', backgroundColor: g1, fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
-              { label: 'Upload', data: upload, borderColor: '#10b981', backgroundColor: g2, fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                labels: {
-                  usePointStyle: true,
-                  pointStyle: 'circle',
-                  color: ticks,
-                  font: { size: 14 }
-                }
-              },
-              tooltip: {
-                backgroundColor: isDark ? '#1e2d42' : '#ffffff',
-                borderColor: isDark ? 'rgba(42, 63, 92, 0.42)' : '#e5e7eb',
-                borderWidth: 1,
-                titleColor: ticks,
-                bodyColor: isDark ? '#e5e7eb' : '#152031',
-                callbacks: {
-                  label: function (ctx) {
-                    return ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y);
-                  }
-                }
-              }
-            },
-            scales: {
-              x: {
-                grid: { color: grid },
-                ticks: { color: ticks, font: { size: 12 } },
-                title: { display: true, text: 'Day of Month', color: ticks }
-              },
-              y: {
-                grid: { color: grid },
-                ticks: { color: ticks, font: { size: 12 }, callback: function (v) { return formatBytes(v); } }
-              }
-            }
-          }
-        });
       }
     </script>
   </head>
@@ -418,6 +317,7 @@
             var t = (type || 'success').toLowerCase();
             var isErr  = (t === 'error' || t === 'danger' || t === 'fail' || t === 'failed');
             var isWarn = (t === 'warning' || t === 'warn');
+            var isInfo = (t === 'info');
 
             var cfg = isErr ? {
               border : 'rgba(185,28,28,0.45)',
@@ -435,6 +335,14 @@
               body   : 'rgba(253,211,77,0.72)',
               label  : 'Warning',
               icon   : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+            } : isInfo ? {
+              border : 'rgba(8,145,178,0.45)',
+              bg     : 'rgba(8,47,73,0.92)',
+              accent : '#22d3ee',
+              title  : '#a5f3fc',
+              body   : 'rgba(165,243,252,0.75)',
+              label  : 'DNS',
+              icon   : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
             } : {
               border : 'rgba(16,185,129,0.35)',
               bg     : 'rgba(6,40,25,0.92)',

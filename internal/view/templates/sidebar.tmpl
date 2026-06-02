@@ -19,6 +19,13 @@
       color: rgb(209 250 229);
     }
 
+    #sidebar a.np-spa-link .wireguard-sidebar-icon {
+      color: #ffffff;
+    }
+    html.dark #sidebar a.np-spa-link.np-active .wireguard-sidebar-icon {
+      color: rgb(209 250 229);
+    }
+
     /* Disabled sidebar item tooltip */
     .sb-disabled-item { position: relative; }
     .sb-disabled-item .sb-tooltip { display: none; }
@@ -44,32 +51,38 @@
     </button>
   </div>
 
-  <nav class="flex-1 space-y-0.5 px-2 py-3">
-    {{template "sidebar_item.tmpl" dict "Href" "/ui" "Label" "Overview" "Icon" "layout-dashboard" "Active" (eq .Path "/ui") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/ui/connections" "Label" "Connections" "Icon" "link-2" "Active" (eq .Path "/ui/connections") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/ui/users" "Label" "Users" "Icon" "users" "Active" (eq .Path "/ui/users") }}
-    {{template "sidebar_item.tmpl" dict "Href" "/ui/groups" "Label" "Groups" "Icon" "users-round" "Active" (or (eq .Path "/ui/groups") (hasPrefix .Path "/ui/groups/")) }}
-    {{if .PCQDisabled}}
-    {{template "sidebar_item_disabled.tmpl" dict "Label" "Queues" "Icon" "sliders-horizontal" "Tooltip" "Queues is disabled"}}
-    {{else}}
-    {{template "sidebar_item.tmpl" dict "Href" "/ui/queues" "Label" "Queues" "Icon" "sliders-horizontal" "Active" (or (eq .Path "/ui/queues") (hasPrefix .Path "/ui/queues/")) }}
-    {{end}}
-    {{template "sidebar_item.tmpl" dict "Href" "/ui/wireguard" "Label" "Wireguard" "Icon" "server" "Active" (eq .Path "/ui/wireguard") }}
+  <nav class="flex-1 min-h-0 px-2 py-3">
+    <div class="space-y-0.5">
+      {{template "sidebar_item.tmpl" dict "Href" "/ui" "Label" "Overview" "Icon" "layout-dashboard" "Active" (eq .Path "/ui") }}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/connections" "Label" "Connections" "Icon" "link-2" "Active" (eq .Path "/ui/connections") }}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/users" "Label" "Users" "Icon" "users" "Active" (eq .Path "/ui/users") }}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/groups" "Label" "Groups" "Icon" "users-round" "Active" (or (eq .Path "/ui/groups") (hasPrefix .Path "/ui/groups/")) }}
+      {{if .PCQDisabled}}
+      {{template "sidebar_item_disabled.tmpl" dict "Label" "Queues" "Icon" "sliders-horizontal" "Tooltip" "Queues is disabled"}}
+      {{else}}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/queues" "Label" "Queues" "Icon" "sliders-horizontal" "Active" (or (eq .Path "/ui/queues") (hasPrefix .Path "/ui/queues/")) }}
+      {{end}}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/wireguard" "Label" "Wireguard" "WireGuardIcon" true "Active" (eq .Path "/ui/wireguard") }}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/dns#filtering" "Label" "DNS" "Icon" "globe-2" "Active" (eq .Path "/ui/dns") "Badge" "New" }}
+    </div>
   </nav>
 
   <div class="border-t border-gray-200 px-2 py-3 dark:border-[rgba(148,163,184,0.06)]">
-    <a
-      href="/ui/settings"
-      class="np-spa-link flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal transition-colors sb-center text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-100 {{if eq .Path "/ui/settings"}}np-active{{end}}"
-      hx-get="/ui/settings"
-      hx-target="#np-main"
-      hx-push-url="true"
-      hx-swap="innerHTML"
-      title="Settings"
-    >
-      <i data-lucide="settings" class="h-4 w-4" style="stroke-width:1.5"></i>
-      <span class="sb-hide">Settings</span>
-    </a>
+    <div class="space-y-0.5">
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/backup" "Label" "Backup & Restore" "Icon" "archive" "Active" (eq .Path "/ui/backup") }}
+      <a
+        href="/ui/settings"
+        class="np-spa-link flex items-center gap-3 rounded px-3 py-2.5 text-sm font-normal transition-colors sb-center text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-[var(--np-muted)] dark:hover:text-gray-100 {{if eq .Path "/ui/settings"}}np-active{{end}}"
+        hx-get="/ui/settings"
+        hx-target="#np-main"
+        hx-push-url="true"
+        hx-swap="innerHTML"
+        title="Settings"
+      >
+        <i data-lucide="settings" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+        <span class="sb-hide flex-1 truncate">Settings</span>
+      </a>
+    </div>
   </div>
 
   <div class="border-t border-gray-200 px-2 py-3 dark:border-[rgba(148,163,184,0.06)]">
@@ -141,8 +154,15 @@
   hx-swap="innerHTML"
   title="{{.Label}}"
 >
-  <i data-lucide="{{.Icon}}" class="h-4 w-4" style="stroke-width:1.5"></i>
-  <span class="sb-hide">{{.Label}}</span>
+  {{if .WireGuardIcon}}
+  {{template "wireguard_sidebar_icon.tmpl"}}
+  {{else}}
+  <i data-lucide="{{.Icon}}" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+  {{end}}
+  <span class="sb-hide flex-1 truncate">{{.Label}}</span>
+  {{if .Badge}}
+  <span class="sb-hide shrink-0">{{template "np_tag_new.tmpl" dict "Text" .Badge}}</span>
+  {{end}}
 </a>
 {{end}}
 

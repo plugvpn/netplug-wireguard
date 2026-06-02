@@ -25,15 +25,33 @@
       </div>
 
       {{if .Users}}
-      <div class="mb-6">
-        <div class="relative">
-          <i data-lucide="search" class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
-          <input
-            id="users-search"
-            type="text"
-            placeholder="Search by username or IP address..."
-            class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100 dark:placeholder-gray-500"
-          />
+      <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+        <div class="sm:w-48 shrink-0">
+          <label for="users-filter-column" class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">Filter by column</label>
+          <select
+            id="users-filter-column"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100"
+          >
+            <option value="all">All columns</option>
+            <option value="username">Username</option>
+            <option value="ip">IP address</option>
+            <option value="status">Status</option>
+            <option value="usage">Total usage</option>
+            <option value="remaining-days">Remaining days</option>
+            <option value="remaining-traffic">Remaining traffic</option>
+          </select>
+        </div>
+        <div class="min-w-0 flex-1">
+          <label for="users-search" class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">Search</label>
+          <div class="relative">
+            <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+            <input
+              id="users-search"
+              type="text"
+              placeholder="Search users..."
+              class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-[rgba(148,163,184,0.09)] dark:bg-[var(--np-muted)] dark:text-gray-100 dark:placeholder-gray-500"
+            />
+          </div>
         </div>
       </div>
       {{end}}
@@ -101,16 +119,22 @@
                 data-username="{{$u.Username}}"
                 data-ip="{{$u.IPAddress}}"
                 data-status="{{if $u.IsEnabled}}1{{else}}0{{end}}"
+                data-status-text="{{if $u.IsEnabled}}enabled{{else}}disabled{{end}}"
                 data-usage="{{addInt64 $u.TotalRxBytes $u.TotalTxBytes}}"
+                data-usage-text="{{humanBytes (addInt64 $u.TotalRxBytes $u.TotalTxBytes)}}"
                 data-remaining-days="{{if $u.HasRemainingDays}}{{$u.RemainingDaysValue}}{{else}}9223372036854775807{{end}}"
                 data-remaining-traffic="{{if $u.HasRemainingTraffic}}{{$u.RemainingTrafficBytes}}{{else}}9223372036854775807{{end}}"
+                data-remaining-days-text="{{if $u.HasRemainingDays}}{{printf "%d" $u.RemainingDaysValue}}{{else}}unlimited{{end}}"
+                data-remaining-traffic-text="{{if $u.HasRemainingTraffic}}{{humanBytes $u.RemainingTrafficBytes}}{{else}}unlimited{{end}}"
               >
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 dark:bg-[var(--np-muted)]">
-                      <i data-lucide="user" class="h-5 w-5 text-gray-300 dark:text-gray-400"></i>
-                    </div>
-                    <div>
+                    <div
+                      class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-sm font-semibold leading-none text-white ring-1 ring-emerald-700/40"
+                      aria-hidden="true"
+                      title="{{$u.Username}}"
+                    >{{initial $u.Username}}</div>
+                    <div class="min-w-0">
                       <p class="font-medium text-gray-100 dark:text-gray-100">{{$u.Username}}</p>
                     </div>
                   </div>
@@ -219,7 +243,12 @@
 
 <script>
   (function () {
+    const STORAGE_FILTER_COLUMN = 'netplug-users-filter-column';
+    const STORAGE_SORT = 'netplug-users-sort';
+    const STORAGE_SEARCH = 'netplug-users-search';
+
     const input = document.getElementById('users-search');
+    const filterColumn = document.getElementById('users-filter-column');
     const tbody = document.getElementById('users-tbody');
     const sortHeaders = document.querySelectorAll('th.users-sortable');
     let sortKey = 'username';
@@ -227,6 +256,88 @@
 
     function norm(s) {
       return (s || '').toString().toLowerCase().trim();
+    }
+
+    function loadStored(key, fallback) {
+      try {
+        var v = localStorage.getItem(key);
+        return v != null && v !== '' ? v : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function saveStored(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {}
+    }
+
+    function loadSort() {
+      try {
+        var raw = localStorage.getItem(STORAGE_SORT);
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (o && o.key) return o;
+      } catch (e) {}
+      return null;
+    }
+
+    function saveSort() {
+      try {
+        localStorage.setItem(STORAGE_SORT, JSON.stringify({ key: sortKey, dir: sortDir }));
+      } catch (e) {}
+    }
+
+    var placeholders = {
+      all: 'Search username or IP…',
+      username: 'Search username…',
+      ip: 'Search IP address…',
+      status: 'Search enabled or disabled…',
+      usage: 'Search usage (e.g. mb, gb)…',
+      'remaining-days': 'Search days (e.g. 30) or unlimited…',
+      'remaining-traffic': 'Search traffic (e.g. gb) or unlimited…',
+    };
+
+    function updateSearchPlaceholder() {
+      if (!input || !filterColumn) return;
+      var col = filterColumn.value || 'all';
+      input.placeholder = placeholders[col] || placeholders.all;
+    }
+
+    function rowHaystack(row, column) {
+      if (column === 'username') return norm(row.getAttribute('data-username'));
+      if (column === 'ip') return norm(row.getAttribute('data-ip'));
+      if (column === 'status') return norm(row.getAttribute('data-status-text'));
+      if (column === 'usage') {
+        return norm(row.getAttribute('data-usage-text')) + ' ' + norm(row.getAttribute('data-usage'));
+      }
+      if (column === 'remaining-days') {
+        return norm(row.getAttribute('data-remaining-days-text'));
+      }
+      if (column === 'remaining-traffic') {
+        return norm(row.getAttribute('data-remaining-traffic-text'));
+      }
+      return [
+        row.getAttribute('data-username'),
+        row.getAttribute('data-ip'),
+        row.getAttribute('data-status-text'),
+        row.getAttribute('data-usage-text'),
+        row.getAttribute('data-usage'),
+        row.getAttribute('data-remaining-days-text'),
+        row.getAttribute('data-remaining-traffic-text'),
+      ].map(norm).join(' ');
+    }
+
+    function applyFilter() {
+      if (!input) return;
+      var q = norm(input.value);
+      var column = filterColumn ? (filterColumn.value || 'all') : 'all';
+      document.querySelectorAll('tr.users-row').forEach(function (row) {
+        var hay = rowHaystack(row, column);
+        var ok = !q || hay.indexOf(q) !== -1;
+        row.style.display = ok ? '' : 'none';
+      });
     }
 
     function ipSortValue(ip) {
@@ -297,24 +408,40 @@
           sortKey = key;
           sortDir = 'asc';
         }
+        saveSort();
         sortRows();
       });
     });
 
-    if (input) {
-      input.addEventListener('input', function () {
-        const q = norm(input.value);
-        const rows = document.querySelectorAll('tr.users-row');
-        rows.forEach(function (row) {
-          const u = norm(row.getAttribute('data-username'));
-          const ip = norm(row.getAttribute('data-ip'));
-          const ok = !q || u.includes(q) || ip.includes(q);
-          row.style.display = ok ? '' : 'none';
-        });
+    if (filterColumn) {
+      var savedColumn = loadStored(STORAGE_FILTER_COLUMN, 'all');
+      if (filterColumn.querySelector('option[value="' + savedColumn + '"]')) {
+        filterColumn.value = savedColumn;
+      }
+      updateSearchPlaceholder();
+      filterColumn.addEventListener('change', function () {
+        saveStored(STORAGE_FILTER_COLUMN, filterColumn.value);
+        updateSearchPlaceholder();
+        applyFilter();
       });
     }
 
+    if (input) {
+      input.value = loadStored(STORAGE_SEARCH, '');
+      input.addEventListener('input', function () {
+        saveStored(STORAGE_SEARCH, input.value);
+        applyFilter();
+      });
+    }
+
+    var storedSort = loadSort();
+    if (storedSort && document.querySelector('th.users-sortable[data-sort-key="' + storedSort.key + '"]')) {
+      sortKey = storedSort.key;
+      sortDir = storedSort.dir === 'desc' ? 'desc' : 'asc';
+    }
+
     sortRows();
+    applyFilter();
   })();
 </script>
 {{end}}

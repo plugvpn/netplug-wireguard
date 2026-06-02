@@ -7,10 +7,12 @@
   {{template "page_header.tmpl" .}}
   <div class="flex-1 overflow-y-auto">
     <div class="p-8">
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">General application preferences</p>
+      </div>
       <div class="rounded border border-gray-200/90 bg-gray-50 p-6 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none">
-        <div class="text-sm text-gray-500 dark:text-gray-400">
-          Settings UI parity placeholder.
-        </div>
+        <p class="text-sm text-gray-500 dark:text-gray-400">More settings will appear here. DNS is configured on the <a href="/ui/dns" class="text-cyan-500 hover:text-cyan-400" hx-get="/ui/dns" hx-target="#np-main" hx-push-url="true" hx-swap="innerHTML">DNS</a> page.</p>
       </div>
     </div>
   </div>
@@ -18,4 +20,3 @@
 {{end}}
 
 {{define "settings.header_right"}}{{end}}
-

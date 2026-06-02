@@ -17,6 +17,7 @@ type Config struct {
 	WGInterval   int  // seconds
 	PCQDisabled  bool // NETPLUG_PCQ_DISABLE removes tc shaping managed by NetPlug
 	Debug        bool // NETPLUG_DEBUG enables JSON structured debug logs (e.g. PCQ tc apply)
+	CoreDNSBin   string // COREDNS_BIN path or name on PATH (default: coredns)
 
 	ProjectRoot string
 }
@@ -62,6 +63,7 @@ func LoadConfig() (Config, error) {
 		WGInterval:   wgInterval,
 		PCQDisabled:  pcqDisable,
 		Debug:        debug,
+		CoreDNSBin:   env("COREDNS_BIN", "coredns"),
 		ProjectRoot:  root,
 	}, nil
 }

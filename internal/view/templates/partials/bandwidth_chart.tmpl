@@ -1,0 +1,582 @@
+{{define "partials/bandwidth_chart.tmpl"}}
+<div id="np-bandwidth" class="np-bandwidth" data-default-mode="hourly">
+  <style>
+    .np-bandwidth {
+      --np-bw-down: #38bdf8;
+      --np-bw-up: #fbbf24;
+      --np-bw-down-dim: rgba(56, 189, 248, 0.14);
+      --np-bw-up-dim: rgba(251, 191, 36, 0.12);
+      --np-bw-grid: rgba(42, 63, 92, 0.38);
+      --np-bw-muted: #8b9cb3;
+      --np-bw-surface: #0a0f18;
+    }
+    .np-bandwidth__head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .np-bandwidth__title {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #e8eef6;
+    }
+    .np-bandwidth__sub {
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--np-bw-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .np-bandwidth__tabs {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      background: rgba(10, 15, 24, 0.85);
+    }
+    .np-bandwidth__tab {
+      border: 0;
+      background: transparent;
+      color: var(--np-bw-muted);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+    }
+    .np-bandwidth__tab:hover { color: #cbd5e1; }
+    .np-bandwidth__tab[aria-selected="true"] {
+      background: rgba(56, 189, 248, 0.12);
+      color: #7dd3fc;
+      box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.22);
+    }
+    .np-bandwidth__kpis {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem;
+      margin-bottom: 1rem;
+    }
+    @media (min-width: 640px) {
+      .np-bandwidth__kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .np-bandwidth__kpi {
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.08);
+      background: linear-gradient(145deg, rgba(20, 31, 46, 0.55), rgba(10, 15, 24, 0.9));
+    }
+    .np-bandwidth__kpi-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--np-bw-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .np-bandwidth__kpi-value {
+      margin-top: 0.2rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      font-variant-numeric: tabular-nums;
+    }
+    .np-bandwidth__kpi-value--down { color: #7dd3fc; }
+    .np-bandwidth__kpi-value--up { color: #fcd34d; }
+    .np-bandwidth__canvas-wrap {
+      position: relative;
+      height: 17.5rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.07);
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(56, 189, 248, 0.06), transparent 55%),
+        var(--np-bw-surface);
+      padding: 0.75rem 0.5rem 0.25rem;
+    }
+    .np-bandwidth__canvas-wrap canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .np-bandwidth__empty {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.5rem;
+      text-align: center;
+      pointer-events: none;
+    }
+    .np-bandwidth__empty--visible { display: flex; }
+    .np-bandwidth__empty-icon {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 9999px;
+      border: 1px dashed rgba(148, 163, 184, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--np-bw-muted);
+    }
+    .np-bandwidth__empty-title {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #cbd5e1;
+    }
+    .np-bandwidth__empty-hint {
+      font-size: 0.75rem;
+      color: var(--np-bw-muted);
+      max-width: 18rem;
+      line-height: 1.45;
+    }
+    .np-bandwidth__legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.72rem;
+      color: var(--np-bw-muted);
+    }
+    .np-bandwidth__legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .np-bandwidth__swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    .np-bandwidth__loading {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 15, 24, 0.72);
+      backdrop-filter: blur(4px);
+      border-radius: 10px;
+      z-index: 2;
+    }
+    .np-bandwidth__loading--visible { display: flex; }
+    .np-bandwidth__loading span {
+      font-size: 0.75rem;
+      color: var(--np-bw-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+  </style>
+
+  <div class="np-bandwidth__head">
+    <div>
+      <div class="np-bandwidth__title">Network throughput</div>
+      <div class="np-bandwidth__sub" id="np-bw-subtitle">Live rates · last 24 hours</div>
+    </div>
+    <div class="np-bandwidth__tabs" role="tablist" aria-label="Chart period">
+      <button type="button" class="np-bandwidth__tab" role="tab" data-mode="hourly" aria-selected="true">24 hours</button>
+      <button type="button" class="np-bandwidth__tab" role="tab" data-mode="daily" aria-selected="false">This month</button>
+    </div>
+  </div>
+
+  <div class="np-bandwidth__kpis" id="np-bw-kpis" aria-live="polite">
+    <div class="np-bandwidth__kpi">
+      <div class="np-bandwidth__kpi-label">Downloaded</div>
+      <div class="np-bandwidth__kpi-value np-bandwidth__kpi-value--down" data-kpi="download-total">—</div>
+    </div>
+    <div class="np-bandwidth__kpi">
+      <div class="np-bandwidth__kpi-label">Uploaded</div>
+      <div class="np-bandwidth__kpi-value np-bandwidth__kpi-value--up" data-kpi="upload-total">—</div>
+    </div>
+    <div class="np-bandwidth__kpi">
+      <div class="np-bandwidth__kpi-label">Peak down</div>
+      <div class="np-bandwidth__kpi-value" data-kpi="peak-down">—</div>
+    </div>
+    <div class="np-bandwidth__kpi">
+      <div class="np-bandwidth__kpi-label">Peak up</div>
+      <div class="np-bandwidth__kpi-value" data-kpi="peak-up">—</div>
+    </div>
+  </div>
+
+  <div class="np-bandwidth__canvas-wrap">
+    <div class="np-bandwidth__loading" id="np-bw-loading" aria-hidden="true">
+      <span>Loading metrics…</span>
+    </div>
+    <div class="np-bandwidth__empty" id="np-bw-empty" aria-hidden="true">
+      <div class="np-bandwidth__empty-icon">
+        <i data-lucide="activity" class="h-5 w-5" style="stroke-width:1.5"></i>
+      </div>
+      <div class="np-bandwidth__empty-title">No throughput samples yet</div>
+      <p class="np-bandwidth__empty-hint">
+        Samples are recorded on each WireGuard sync. Once peers transfer data, rates and volume will appear here.
+      </p>
+    </div>
+    <canvas id="bandwidth-chart" aria-label="Bandwidth chart"></canvas>
+  </div>
+
+  <div class="np-bandwidth__legend">
+    <span class="np-bandwidth__legend-item">
+      <span class="np-bandwidth__swatch" style="background: var(--np-bw-down);"></span>
+      <span data-legend="down">Download</span>
+    </span>
+    <span class="np-bandwidth__legend-item">
+      <span class="np-bandwidth__swatch" style="background: var(--np-bw-up);"></span>
+      <span data-legend="up">Upload</span>
+    </span>
+    <span class="np-bandwidth__legend-item" id="np-bw-snapshots" style="margin-left: auto; opacity: 0.75;"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  if (window.__npBandwidthChartInit) return;
+  window.__npBandwidthChartInit = true;
+
+  var COLORS = {
+    down: '#38bdf8',
+    up: '#fbbf24',
+    downFill: 'rgba(56, 189, 248, 0.22)',
+    upFill: 'rgba(251, 191, 36, 0.16)',
+    grid: 'rgba(42, 63, 92, 0.38)',
+    ticks: '#8b9cb3',
+    today: 'rgba(56, 189, 248, 0.35)',
+  };
+
+  var __bwChart = null;
+  var __bwMode = 'hourly';
+  var __bwAbort = null;
+  var __bwPollTimer = null;
+
+  function formatBytes(bytes, opts) {
+    opts = opts || {};
+    var b = Number(bytes || 0);
+    if (!opts.forceUnit && b === 0) return '0 B';
+    var kb = b / 1024, mb = kb / 1024, gb = mb / 1024, tb = gb / 1024;
+    if (tb >= 1) return tb.toFixed(opts.decimals != null ? opts.decimals : 2) + ' TB';
+    if (gb >= 1) return gb.toFixed(opts.decimals != null ? opts.decimals : 2) + ' GB';
+    if (mb >= 1) return mb.toFixed(opts.decimals != null ? opts.decimals : 2) + ' MB';
+    if (kb >= 1) return kb.toFixed(opts.decimals != null ? opts.decimals : 1) + ' KB';
+    return Math.round(b) + ' B';
+  }
+
+  function formatRate(bps) {
+    return formatBytes(bps, { decimals: 1 }) + '/s';
+  }
+
+  function setLoading(on) {
+    var el = document.getElementById('np-bw-loading');
+    if (el) {
+      el.classList.toggle('np-bandwidth__loading--visible', !!on);
+      el.setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+  }
+
+  function setEmpty(on) {
+    var el = document.getElementById('np-bw-empty');
+    var canvas = document.getElementById('bandwidth-chart');
+    if (el) {
+      el.classList.toggle('np-bandwidth__empty--visible', !!on);
+      el.setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+    if (canvas) canvas.style.opacity = on ? '0.15' : '1';
+  }
+
+  function updateKPIs(summary, mode) {
+    var root = document.getElementById('np-bw-kpis');
+    if (!root || !summary) return;
+    var dl = root.querySelector('[data-kpi="download-total"]');
+    var ul = root.querySelector('[data-kpi="upload-total"]');
+    var pd = root.querySelector('[data-kpi="peak-down"]');
+    var pu = root.querySelector('[data-kpi="peak-up"]');
+    var isHourly = mode === 'hourly';
+    if (dl) dl.textContent = formatBytes(summary.downloadTotal);
+    if (ul) ul.textContent = formatBytes(summary.uploadTotal);
+    if (isHourly) {
+      if (pd) pd.textContent = formatRate(summary.peakDownloadRate || 0);
+      if (pu) pu.textContent = formatRate(summary.peakUploadRate || 0);
+    } else {
+      if (pd) pd.textContent = formatBytes(summary.peakDailyDownload || 0);
+      if (pu) pu.textContent = formatBytes(summary.peakDailyUpload || 0);
+    }
+
+    var labels = root.querySelectorAll('.np-bandwidth__kpi-label');
+    if (labels[0]) labels[0].textContent = isHourly ? 'Downloaded (24h)' : 'Downloaded (MTD)';
+    if (labels[1]) labels[1].textContent = isHourly ? 'Uploaded (24h)' : 'Uploaded (MTD)';
+    if (labels[2]) labels[2].textContent = isHourly ? 'Peak rate (down)' : 'Busiest day (down)';
+    if (labels[3]) labels[3].textContent = isHourly ? 'Peak rate (up)' : 'Busiest day (up)';
+
+    var snap = document.getElementById('np-bw-snapshots');
+    if (snap) {
+      var n = summary.snapshotCount || 0;
+      snap.textContent = n ? n + ' samples' : '';
+    }
+  }
+
+  function updateSubtitle(mode) {
+    var sub = document.getElementById('np-bw-subtitle');
+    var legDown = document.querySelector('[data-legend="down"]');
+    var legUp = document.querySelector('[data-legend="up"]');
+    if (mode === 'hourly') {
+      if (sub) sub.textContent = 'Live rates · 15‑min averages · last 24 hours';
+      if (legDown) legDown.textContent = 'Download rate';
+      if (legUp) legUp.textContent = 'Upload rate';
+    } else {
+      if (sub) sub.textContent = 'Daily volume · month to date';
+      if (legDown) legDown.textContent = 'Download';
+      if (legUp) legUp.textContent = 'Upload';
+    }
+  }
+
+  function syncTabs(mode) {
+    document.querySelectorAll('.np-bandwidth__tab').forEach(function (btn) {
+      var on = btn.getAttribute('data-mode') === mode;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function buildChartConfig(mode, history, summary) {
+    var isHourly = mode === 'hourly';
+    var labels = [];
+    var down = [];
+    var up = [];
+    var todayIdx = -1;
+
+    history.forEach(function (p, i) {
+      labels.push(p.label || (p.day != null ? String(p.day) : ''));
+      if (isHourly) {
+        down.push(p.downloadRate || 0);
+        up.push(p.uploadRate || 0);
+      } else {
+        down.push(p.downloadTotal || 0);
+        up.push(p.uploadTotal || 0);
+        if (p.isToday) todayIdx = i;
+      }
+    });
+
+    var yFormat = isHourly
+      ? function (v) { return formatRate(v); }
+      : function (v) { return formatBytes(v); };
+
+    var tooltipLabel = function (ctx) {
+      var val = ctx.parsed.y;
+      return ctx.dataset.label + ': ' + (isHourly ? formatRate(val) : formatBytes(val));
+    };
+
+    return {
+      type: isHourly ? 'line' : 'bar',
+      data: {
+        labels: labels,
+        datasets: isHourly ? [
+          {
+            label: 'Download',
+            data: down,
+            borderColor: COLORS.down,
+            backgroundColor: COLORS.downFill,
+            fill: true,
+            tension: 0.35,
+            pointRadius: history.length <= 24 ? 3 : 0,
+            pointHoverRadius: 5,
+            borderWidth: 2,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Upload',
+            data: up,
+            borderColor: COLORS.up,
+            backgroundColor: COLORS.upFill,
+            fill: true,
+            tension: 0.35,
+            pointRadius: history.length <= 24 ? 3 : 0,
+            pointHoverRadius: 5,
+            borderWidth: 2,
+            yAxisID: 'y',
+          },
+        ] : [
+          {
+            label: 'Download',
+            data: down,
+            backgroundColor: COLORS.down,
+            borderRadius: 4,
+            borderSkipped: false,
+            stack: 'vol',
+          },
+          {
+            label: 'Upload',
+            data: up,
+            backgroundColor: COLORS.up,
+            borderRadius: 4,
+            borderSkipped: false,
+            stack: 'vol',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#141f2e',
+            borderColor: 'rgba(148, 163, 184, 0.15)',
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#94a3b8',
+            padding: 12,
+            callbacks: {
+              title: function (items) {
+                if (!items.length) return '';
+                var idx = items[0].dataIndex;
+                var pt = history[idx];
+                if (!pt) return items[0].label;
+                if (isHourly && pt.timestamp) {
+                  try {
+                    var d = new Date(pt.timestamp);
+                    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                  } catch (e) {}
+                }
+                if (!isHourly && pt.timestamp) {
+                  try {
+                    var d2 = new Date(pt.timestamp);
+                    return d2.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                  } catch (e) {}
+                }
+                return items[0].label;
+              },
+              label: tooltipLabel,
+              footer: function (items) {
+                if (!isHourly || !items.length) return '';
+                var d = 0, u = 0;
+                items.forEach(function (it) {
+                  if (it.dataset.label === 'Download') d = it.parsed.y;
+                  if (it.dataset.label === 'Upload') u = it.parsed.y;
+                });
+                return 'Combined: ' + formatRate(d + u);
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            stacked: !isHourly,
+            grid: { color: COLORS.grid, drawBorder: false },
+            ticks: {
+              color: COLORS.ticks,
+              font: { size: 11, family: 'ui-monospace, monospace' },
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: isHourly ? 8 : 10,
+            },
+          },
+          y: {
+            stacked: !isHourly,
+            beginAtZero: true,
+            grid: { color: COLORS.grid, drawBorder: false },
+            ticks: {
+              color: COLORS.ticks,
+              font: { size: 11 },
+              callback: function (v) { return yFormat(v); },
+            },
+          },
+        },
+      },
+      plugins: !isHourly && todayIdx >= 0 ? [{
+        id: 'npTodayHighlight',
+        beforeDatasetsDraw: function (chart) {
+          var meta = chart.getDatasetMeta(0);
+          if (!meta || !meta.data[todayIdx]) return;
+          var el = meta.data[todayIdx];
+          var ctx = chart.ctx;
+          var pad = 6;
+          ctx.save();
+          ctx.fillStyle = COLORS.today;
+          ctx.fillRect(el.x - el.width / 2 - pad, chart.chartArea.top, el.width + pad * 2, chart.chartArea.bottom - chart.chartArea.top);
+          ctx.restore();
+        },
+      }] : [],
+    };
+  }
+
+  async function loadBandwidthChart(mode) {
+    var canvas = document.getElementById('bandwidth-chart');
+    if (!canvas || !window.Chart) return;
+
+    __bwMode = mode || __bwMode;
+    var root = document.getElementById('np-bandwidth');
+    if (root) root.setAttribute('data-active-mode', __bwMode);
+    syncTabs(__bwMode);
+    updateSubtitle(__bwMode);
+
+    if (__bwAbort) __bwAbort.abort();
+    __bwAbort = new AbortController();
+    setLoading(true);
+
+    var url = __bwMode === 'daily'
+      ? '/api/bandwidth/history?mode=daily'
+      : '/api/bandwidth/history?mode=hourly&hours=24';
+
+    var payload = { history: [], summary: { hasData: false, snapshotCount: 0 } };
+    try {
+      var res = await fetch(url, { credentials: 'same-origin', signal: __bwAbort.signal });
+      if (res.ok) payload = await res.json();
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    } finally {
+      setLoading(false);
+    }
+
+    var history = Array.isArray(payload.history) ? payload.history : [];
+    var summary = payload.summary || {};
+    var hasData = summary.hasData && history.some(function (p) {
+      return (p.downloadRate || p.uploadRate || p.downloadTotal || p.uploadTotal);
+    });
+
+    updateKPIs(summary, __bwMode);
+    setEmpty(!hasData);
+
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (__bwChart) {
+      __bwChart.destroy();
+      __bwChart = null;
+    }
+
+    if (!hasData) return;
+
+    __bwChart = new Chart(ctx, buildChartConfig(__bwMode, history, summary));
+  }
+
+  function syncBandwidthPoll() {
+    if (__bwPollTimer) {
+      clearInterval(__bwPollTimer);
+      __bwPollTimer = null;
+    }
+    __bwPollTimer = setInterval(function () {
+      if (__bwMode === 'hourly') {
+        loadBandwidthChart('hourly');
+      }
+    }, 10000);
+  }
+
+  window.__npLoadBandwidthChart = function () {
+    var root = document.getElementById('np-bandwidth');
+    if (!root) return;
+    var mode = root.getAttribute('data-active-mode') || root.getAttribute('data-default-mode') || 'hourly';
+    loadBandwidthChart(mode);
+    syncBandwidthPoll();
+    try { lucide.createIcons(); } catch (e) {}
+  };
+
+  document.addEventListener('click', function (e) {
+    var tab = e.target.closest('.np-bandwidth__tab');
+    if (!tab) return;
+    var mode = tab.getAttribute('data-mode');
+    if (!mode || mode === __bwMode) return;
+    loadBandwidthChart(mode);
+  });
+})();
+</script>
+{{end}}

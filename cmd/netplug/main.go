@@ -21,6 +21,7 @@ import (
 	"netplug-go/internal/app"
 	"netplug-go/internal/assets"
 	"netplug-go/internal/db"
+	"netplug-go/internal/dns"
 	"netplug-go/internal/pcq"
 	"netplug-go/internal/view"
 	"netplug-go/internal/wireguard"
@@ -70,13 +71,20 @@ func main() {
 		svcLog = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	}
 
+	dnsMgr := dns.NewManager(cfg.DataDir, cfg.CoreDNSBin, cfg.WGInterface, sqlDB)
 	svc := &app.Services{
 		DB:        sqlDB,
 		Sessions:  sessionManager,
 		Config:    cfg,
 		Logger:    svcLog,
+		DNS:       dnsMgr,
 		StartedAt: time.Now(),
 	}
+	defer func() {
+		if err := dnsMgr.Stop(); err != nil {
+			log.Printf("dns shutdown: %v", err)
+		}
+	}()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -127,6 +135,9 @@ func main() {
 						log.Printf("pcq startup: %v", err)
 					}
 				}
+			}
+			if err := dns.ApplyFromDB(dnsMgr, sqlDB, cfg.CoreDNSBin); err != nil {
+				log.Printf("dns startup: %v", err)
 			}
 		}
 	}

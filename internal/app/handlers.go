@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"netplug-go/internal/db"
+	"netplug-go/internal/dns"
 	"netplug-go/internal/version"
 	"netplug-go/internal/view"
 	"netplug-go/internal/wireguard"
@@ -753,40 +755,40 @@ func (h *Handlers) UIPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handlers) OverviewAllPartial(w http.ResponseWriter, r *http.Request) {
-	type connStats struct {
-		InUse        int
-		Available    int
-		Total        int
-		Mid          int
-		InUsePct     int
-		AvailablePct int
-	}
-	type xferStats struct {
-		Received int64
-		Sent     int64
-		Combined int64
-	}
-	type sysInfo struct {
-		ServerAddress string
-		Version       string
-		OSName        string
-		Hostname      string
-		UptimeHuman   string
-		AcceptingOn   string
-		Ports         string
-	}
+type overviewConnStats struct {
+	InUse        int
+	Available    int
+	Total        int
+	Mid          int
+	InUsePct     int
+	AvailablePct int
+}
 
-	var (
-		total, enabled, connected int
-	)
+type overviewXferStats struct {
+	Received int64
+	Sent     int64
+	Combined int64
+}
+
+type overviewSysInfo struct {
+	ServerAddress string
+	Version       string
+	OSName        string
+	Hostname      string
+	UptimeHuman   string
+	AcceptingOn   string
+	Ports         string
+}
+
+func (h *Handlers) loadOverviewData() (overviewConnStats, overviewXferStats, overviewSysInfo) {
+	var total, enabled, connected int
 	_ = h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_users WHERE server_id='wireguard'`).Scan(&total)
 	_ = h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_users WHERE server_id='wireguard' AND is_enabled=1`).Scan(&enabled)
 	_ = h.svc.DB.QueryRow(`SELECT COUNT(*) FROM vpn_users WHERE server_id='wireguard' AND is_enabled=1 AND is_connected=1`).Scan(&connected)
 
 	inUse := connected
 	available := maxInt(0, enabled-inUse)
-	cs := connStats{
+	cs := overviewConnStats{
 		InUse:     inUse,
 		Available: available,
 		Total:     total,
@@ -798,13 +800,12 @@ func (h *Handlers) OverviewAllPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var rx, tx int64
-	// total_bytes_* are cumulative; bytes_* are current counters. Sum both for an "all time-ish" number.
 	_ = h.svc.DB.QueryRow(`SELECT COALESCE(SUM(total_bytes_received + bytes_received),0), COALESCE(SUM(total_bytes_sent + bytes_sent),0) FROM vpn_users WHERE server_id='wireguard'`).Scan(&rx, &tx)
-	xf := xferStats{Received: rx, Sent: tx, Combined: rx + tx}
+	xf := overviewXferStats{Received: rx, Sent: tx, Combined: rx + tx}
 
 	hn, _ := os.Hostname()
 	uptime := time.Since(h.svc.StartedAt)
-	si := sysInfo{
+	si := overviewSysInfo{
 		ServerAddress: h.svc.Config.HTTPAddr,
 		Version:       version.Display(),
 		OSName:        runtime.GOOS,
@@ -813,12 +814,35 @@ func (h *Handlers) OverviewAllPartial(w http.ResponseWriter, r *http.Request) {
 		AcceptingOn:   h.svc.Config.WGInterface,
 		Ports:         strconv.Itoa(wireguardPort(h.svc.DB)),
 	}
+	return cs, xf, si
+}
 
-	view.RenderPartial(w, r, "partials/overview_all.tmpl", view.M{
-		"Conn": cs,
-		"Xfer": xf,
-		"Sys":  si,
+func (h *Handlers) OverviewConnectionsPartial(w http.ResponseWriter, r *http.Request) {
+	conn, _, _ := h.loadOverviewData()
+	view.RenderPartial(w, r, "partials/overview_connections.tmpl", view.M{"Conn": conn})
+}
+
+func (h *Handlers) OverviewServerPartial(w http.ResponseWriter, r *http.Request) {
+	_, _, sys := h.loadOverviewData()
+	view.RenderPartial(w, r, "partials/overview_server.tmpl", view.M{"Sys": sys})
+}
+
+func (h *Handlers) OverviewTransferPartial(w http.ResponseWriter, r *http.Request) {
+	_, xfer, _ := h.loadOverviewData()
+	view.RenderPartial(w, r, "partials/overview_transfer.tmpl", view.M{"Xfer": xfer})
+}
+
+func (h *Handlers) OverviewLivePartial(w http.ResponseWriter, r *http.Request) {
+	conn, _, sys := h.loadOverviewData()
+	view.RenderPartial(w, r, "partials/overview_live_oob.tmpl", view.M{
+		"Conn": conn,
+		"Sys":  sys,
 	})
+}
+
+// OverviewAllPartial is kept for backwards compatibility; redirects clients to live OOB refresh.
+func (h *Handlers) OverviewAllPartial(w http.ResponseWriter, r *http.Request) {
+	h.OverviewLivePartial(w, r)
 }
 
 func wireguardPort(dbConn *sql.DB) int {
@@ -1647,6 +1671,14 @@ func (h *Handlers) ServersPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handlers) BackupPage(w http.ResponseWriter, r *http.Request) {
+	view.Render(w, r, "backup.tmpl", view.M{
+		"Title":           "Backup & Restore",
+		"SaveMessage":     strings.TrimSpace(r.URL.Query().Get("msg")),
+		"SaveMessageType": strings.TrimSpace(r.URL.Query().Get("msgType")),
+	})
+}
+
 func (h *Handlers) WireGuardPage(w http.ResponseWriter, r *http.Request) {
 	cfg, server, live, hostUp, tunUp, err := wireguard.LoadWireGuardState(h.svc.DB, h.svc.Config.WGInterface, h.svc.StartedAt)
 	if err != nil {
@@ -1678,6 +1710,410 @@ func (h *Handlers) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func parseDNSListenPort(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return db.DefaultDNSListenPort, nil
+	}
+	port, err := strconv.Atoi(s)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, errors.New("DNS listen port must be between 1 and 65535")
+	}
+	return port, nil
+}
+
+func (h *Handlers) enrichDNSSettings(cfg db.DNSSettings) db.DNSSettings {
+	if strings.TrimSpace(cfg.Binary) == "" {
+		fb := strings.TrimSpace(h.svc.Config.CoreDNSBin)
+		if fb == "" {
+			fb = db.DefaultDNSBinary
+		}
+		cfg.Binary = fb
+	}
+	return cfg
+}
+
+func (h *Handlers) applyDNSFromDB() error {
+	err := dns.ApplyFromDB(h.svc.DNS, h.svc.DB, h.svc.Config.CoreDNSBin)
+	if err == nil && h.svc.Logger != nil {
+		if st := h.svc.DNS.Status(); st.Running {
+			h.svc.Logger.Info("dns apply", "action", "start", "listen", st.ListenAddr)
+		} else {
+			h.svc.Logger.Info("dns apply", "action", "stop")
+		}
+	}
+	return err
+}
+
+func normalizeDNSSection(section string) string {
+	switch strings.TrimSpace(section) {
+	case "filtering", "rewrites", "rules", "server":
+		return strings.TrimSpace(section)
+	default:
+		return "filtering"
+	}
+}
+
+func dnsSectionFromRequest(r *http.Request) string {
+	if s := strings.TrimSpace(r.URL.Query().Get("section")); s != "" {
+		return normalizeDNSSection(s)
+	}
+	if s := strings.TrimSpace(r.FormValue("dns_section")); s != "" {
+		return normalizeDNSSection(s)
+	}
+	return "filtering"
+}
+
+func (h *Handlers) DNSPage(w http.ResponseWriter, r *http.Request) {
+	h.renderDNSPage(w, r, strings.TrimSpace(r.URL.Query().Get("msg")), strings.TrimSpace(r.URL.Query().Get("msgType")), dnsSectionFromRequest(r))
+}
+
+func (h *Handlers) renderDNSPage(w http.ResponseWriter, r *http.Request, saveMessage, saveMessageType, section string) {
+	dnsCfg, _ := db.GetDNSSettings(h.svc.DB)
+	dnsCfg = h.enrichDNSSettings(dnsCfg)
+	listen, listenErr := wireguard.ResolveDNSListenAddress(h.svc.DB, dnsCfg)
+	if listenErr == nil {
+		dnsCfg.ListenAddr = listen
+	}
+	wgDefaultHost, _ := wireguard.DNSServerHost(h.svc.DB)
+	clientDNSPlaceholder := wireguard.DefaultAutoDNSHost
+	listenHostPlaceholder := wgDefaultHost
+	if listenHostPlaceholder == "" {
+		listenHostPlaceholder = "10.8.0.1"
+	}
+	clientDNSAddr := ""
+	if dnsCfg.Enabled {
+		clientDNSAddr, _ = wireguard.DNSResolverHost(h.svc.DB, dnsCfg)
+	}
+	listenErrMsg := ""
+	if listenErr != nil {
+		listenErrMsg = listenErr.Error()
+	}
+	st := dns.Status{}
+	if h.svc.DNS != nil {
+		st = h.svc.DNS.Status()
+	}
+	records, _ := db.ListDNSRecords(h.svc.DB)
+	rules, _ := db.ListDNSDomainRules(h.svc.DB)
+	view.Render(w, r, "dns.tmpl", view.M{
+		"Title":                 "DNS",
+		"DNSSection":            normalizeDNSSection(section),
+		"DNS":                   dnsCfg,
+		"DNSRecords":            records,
+		"DNSDomainRules":        rules,
+		"DNSRecordTypes":        db.DNSRecordTypes,
+		"DNSUpstreamPresets":    db.DNSUpstreamPresets,
+		"DNSStatus":             st,
+		"WGDefaultHost":           wgDefaultHost,
+		"ClientDNSAddr":           clientDNSAddr,
+		"ClientDNSPlaceholder":    clientDNSPlaceholder,
+		"ListenHostPlaceholder":   listenHostPlaceholder,
+		"ListenErr":             listenErrMsg,
+		"SaveMessage":           saveMessage,
+		"SaveMessageType":       saveMessageType,
+	})
+}
+
+func (h *Handlers) dnsRedirect(w http.ResponseWriter, r *http.Request, toastType, msg string) {
+	if h.svc.Logger != nil {
+		h.svc.Logger.Info("dns", "toast_type", toastType, "message", msg)
+	}
+	tt := strings.TrimSpace(toastType)
+	if tt == "error" {
+		tt = "danger"
+	}
+	section := dnsSectionFromRequest(r)
+	if strings.EqualFold(r.Header.Get("HX-Request"), "true") {
+		if strings.TrimSpace(msg) != "" {
+			w.Header().Set("HX-Trigger", `{"toast":{"type":`+strconv.Quote(tt)+`,"message":`+strconv.Quote(msg)+`}}`)
+		}
+		h.renderDNSPage(w, r, "", "", section)
+		return
+	}
+	path := "/ui/dns"
+	if strings.TrimSpace(msg) != "" {
+		path += "?msgType=" + urlQueryEscape(tt) + "&msg=" + urlQueryEscape(msg)
+	}
+	path += "#" + section
+	http.Redirect(w, r, path, http.StatusFound)
+}
+
+func (h *Handlers) DNSSavePost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.dnsRedirect(w, r, "error", "Invalid form submission.")
+		return
+	}
+	enabled := r.FormValue("dns_enabled") == "on" || r.FormValue("dns_enabled") == "1"
+	port, err := parseDNSListenPort(r.FormValue("dns_listen_port"))
+	if err != nil {
+		h.dnsRedirect(w, r, "error", err.Error())
+		return
+	}
+	binary := strings.TrimSpace(r.FormValue("dns_binary"))
+	if binary == "" {
+		binary = db.DefaultDNSBinary
+	}
+	upstreams := strings.TrimSpace(r.FormValue("dns_forward_upstreams"))
+	if upstreams == "" {
+		upstreams = db.DefaultDNSSettings().ForwardUpstreams
+	}
+
+	var logParts []string
+	if enabled {
+		logParts = append(logParts, "enable requested")
+	} else {
+		logParts = append(logParts, "disable requested")
+	}
+	logParts = append(logParts, fmt.Sprintf("port=%d", port), fmt.Sprintf("binary=%q", binary))
+
+	cacheTTL, err := parseDNSCacheTTL(r.FormValue("dns_cache_ttl"))
+	if err != nil {
+		h.dnsRedirect(w, r, "error", err.Error())
+		return
+	}
+	blockAddr := strings.TrimSpace(r.FormValue("dns_block_address"))
+	if blockAddr == "" {
+		blockAddr = db.DefaultDNSBlockAddress
+	}
+
+	clientDNSHost := strings.TrimSpace(r.FormValue("dns_client_dns_host"))
+	if clientDNSHost != "" {
+		if _, err := wireguard.NormalizeDNSHost(clientDNSHost); err != nil {
+			h.dnsRedirect(w, r, "error", "Invalid client DNS address: "+err.Error())
+			return
+		}
+	}
+	listenHost := strings.TrimSpace(r.FormValue("dns_listen_host"))
+	if listenHost != "" {
+		if _, err := wireguard.NormalizeDNSHost(listenHost); err != nil {
+			h.dnsRedirect(w, r, "error", "Invalid listen address: "+err.Error())
+			return
+		}
+	}
+
+	cfg := db.DNSSettings{
+		Enabled:          enabled,
+		ClientDNSHost:    clientDNSHost,
+		ListenHost:       listenHost,
+		ListenPort:       port,
+		Binary:           binary,
+		ForwardUpstreams: upstreams,
+		BlockAdsEnabled:  r.FormValue("dns_block_ads") == "on" || r.FormValue("dns_block_ads") == "1",
+		BlocklistURLs:    strings.TrimSpace(r.FormValue("dns_blocklist_urls")),
+		BlockAddress:     blockAddr,
+		CacheTTL:         cacheTTL,
+		QueryLogEnabled:  r.FormValue("dns_query_log") == "on" || r.FormValue("dns_query_log") == "1",
+	}
+	var autoDNSHost string
+	if enabled {
+		generated, err := wireguard.EnsureAutoDNSHost(h.svc.DB, &cfg)
+		if err != nil {
+			h.dnsRedirect(w, r, "error", "Could not assign DNS address: "+err.Error())
+			return
+		}
+		if generated {
+			autoDNSHost = cfg.ClientDNSHost
+			logParts = append(logParts, "client_dns_host="+autoDNSHost+" (auto)")
+		}
+		listen, err := wireguard.ResolveDNSListenAddress(h.svc.DB, cfg)
+		if err != nil {
+			h.dnsRedirect(w, r, "error", "Cannot enable DNS: "+err.Error())
+			return
+		}
+		cfg.ListenAddr = listen
+		logParts = append(logParts, "listen="+listen)
+		if cfg.ListenHost != "" {
+			logParts = append(logParts, "listen_host="+cfg.ListenHost)
+		}
+	}
+	if err := db.UpsertDNSSettings(h.svc.DB, cfg); err != nil {
+		if h.svc.Logger != nil {
+			h.svc.Logger.Error("dns save", "err", err, "steps", strings.Join(logParts, "; "))
+		}
+		h.dnsRedirect(w, r, "error", "Could not save DNS settings to the database.")
+		return
+	}
+	logParts = append(logParts, "settings saved")
+
+	if err := h.applyDNSFromDB(); err != nil {
+		if h.svc.Logger != nil {
+			h.svc.Logger.Warn("dns apply", "err", err, "steps", strings.Join(logParts, "; "))
+		}
+		h.dnsRedirect(w, r, "warning", "Settings saved, but CoreDNS failed: "+err.Error())
+		return
+	}
+
+	var msg string
+	if enabled {
+		st := dns.Status{}
+		if h.svc.DNS != nil {
+			st = h.svc.DNS.Status()
+		}
+		if st.Running {
+			if st.PID > 0 {
+				msg = fmt.Sprintf("DNS enabled — CoreDNS running on %s (pid %d).", st.ListenAddr, st.PID)
+			} else {
+				msg = fmt.Sprintf("DNS enabled — CoreDNS running on %s.", st.ListenAddr)
+			}
+			if autoDNSHost != "" {
+				msg += fmt.Sprintf(" Assigned client DNS %s (WireGuard server address not set).", autoDNSHost)
+			}
+		} else {
+			msg = "DNS enabled in config, but CoreDNS is not running. Check the error below."
+			h.dnsRedirect(w, r, "warning", msg)
+			return
+		}
+	} else {
+		msg = "DNS disabled — settings saved and CoreDNS stopped."
+	}
+	if h.svc.Logger != nil {
+		h.svc.Logger.Info("dns save", "steps", strings.Join(logParts, "; "), "result", msg)
+	}
+	h.dnsRedirect(w, r, "success", msg)
+}
+
+func parseDNSCacheTTL(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return db.DefaultDNSCacheTTL, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 86400 {
+		return 0, errors.New("cache TTL must be between 1 and 86400 seconds")
+	}
+	return n, nil
+}
+
+func parseDNSRecordTTL(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return db.DefaultDNSRewriteTTL, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 2147483647 {
+		return 0, errors.New("TTL must be between 1 and 2147483647")
+	}
+	return n, nil
+}
+
+func (h *Handlers) DNSRecordAddPost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.dnsRedirect(w, r, "error", "Invalid form submission.")
+		return
+	}
+	ttl, err := parseDNSRecordTTL(r.FormValue("record_ttl"))
+	if err != nil {
+		h.dnsRedirect(w, r, "error", err.Error())
+		return
+	}
+	rec := db.DNSRecord{
+		Name:    r.FormValue("record_name"),
+		Type:    r.FormValue("record_type"),
+		Value:   r.FormValue("record_value"),
+		TTL:     ttl,
+		Enabled: true,
+	}
+	if err := db.ValidateDNSRewrite(rec); err != nil {
+		h.dnsRedirect(w, r, "error", err.Error())
+		return
+	}
+	inserted, err := db.InsertDNSRecord(h.svc.DB, rec)
+	if err != nil {
+		h.dnsRedirect(w, r, "error", "Could not add DNS rewrite.")
+		return
+	}
+	if err := h.applyDNSFromDB(); err != nil {
+		h.dnsRedirect(w, r, "warning", "Rewrite added, but CoreDNS failed to reload: "+err.Error())
+		return
+	}
+	h.dnsRedirect(w, r, "success", fmt.Sprintf("Rewrite added: %s → %s (%s).", inserted.Name, inserted.Value, inserted.Type))
+}
+
+func (h *Handlers) DNSDomainRuleAddPost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.dnsRedirect(w, r, "error", "Invalid form submission.")
+		return
+	}
+	rule := db.DNSDomainRule{
+		Domain:   r.FormValue("rule_domain"),
+		RuleType: r.FormValue("rule_type"),
+		Enabled:  true,
+	}
+	if err := db.ValidateDNSDomainRule(rule); err != nil {
+		h.dnsRedirect(w, r, "error", err.Error())
+		return
+	}
+	inserted, err := db.InsertDNSDomainRule(h.svc.DB, rule)
+	if err != nil {
+		h.dnsRedirect(w, r, "error", "Could not add domain rule.")
+		return
+	}
+	if err := h.applyDNSFromDB(); err != nil {
+		h.dnsRedirect(w, r, "warning", "Rule added, but CoreDNS failed to reload: "+err.Error())
+		return
+	}
+	label := "blocked"
+	if inserted.RuleType == "allow" {
+		label = "allowed"
+	}
+	h.dnsRedirect(w, r, "success", fmt.Sprintf("Domain %s (%s).", inserted.Domain, label))
+}
+
+func (h *Handlers) DNSDomainRuleDeletePost(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		h.dnsRedirect(w, r, "error", "Rule id is required.")
+		return
+	}
+	if err := db.DeleteDNSDomainRule(h.svc.DB, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.dnsRedirect(w, r, "error", "Domain rule not found.")
+			return
+		}
+		h.dnsRedirect(w, r, "error", "Could not delete domain rule.")
+		return
+	}
+	if err := h.applyDNSFromDB(); err != nil {
+		h.dnsRedirect(w, r, "warning", "Rule deleted, but CoreDNS failed to reload: "+err.Error())
+		return
+	}
+	h.dnsRedirect(w, r, "success", "Domain rule deleted.")
+}
+
+func (h *Handlers) DNSRecordDeletePost(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		h.dnsRedirect(w, r, "error", "Record id is required.")
+		return
+	}
+	if err := db.DeleteDNSRecord(h.svc.DB, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.dnsRedirect(w, r, "error", "DNS rewrite not found.")
+			return
+		}
+		h.dnsRedirect(w, r, "error", "Could not delete DNS rewrite.")
+		return
+	}
+	if err := h.applyDNSFromDB(); err != nil {
+		h.dnsRedirect(w, r, "warning", "Rewrite deleted, but CoreDNS failed to reload: "+err.Error())
+		return
+	}
+	h.dnsRedirect(w, r, "success", "DNS rewrite deleted.")
+}
+
+func (h *Handlers) DNSReloadPost(w http.ResponseWriter, r *http.Request) {
+	if err := h.applyDNSFromDB(); err != nil {
+		h.dnsRedirect(w, r, "warning", "CoreDNS reload failed: "+err.Error())
+		return
+	}
+	dnsCfg, _ := db.GetDNSSettings(h.svc.DB)
+	if dnsCfg.Enabled {
+		h.dnsRedirect(w, r, "success", "CoreDNS reloaded from saved settings.")
+		return
+	}
+	h.dnsRedirect(w, r, "success", "DNS is disabled — CoreDNS stopped.")
+}
+
 func (h *Handlers) WireGuardSavePost(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
@@ -1707,6 +2143,7 @@ func (h *Handlers) WireGuardSavePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.reconcilePCQ()
+	h.applyDNSAfterWireGuard(&res)
 	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
 }
 
@@ -1717,6 +2154,7 @@ func (h *Handlers) WireGuardReloadPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.reconcilePCQ()
+	h.applyDNSAfterWireGuard(&res)
 	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
 }
 
@@ -1727,7 +2165,23 @@ func (h *Handlers) WireGuardRestartPost(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.reconcilePCQ()
+	h.applyDNSAfterWireGuard(&res)
 	http.Redirect(w, r, "/ui/wireguard?msgType="+urlQueryEscape(res.Type)+"&msg="+urlQueryEscape(res.Text), http.StatusFound)
+}
+
+func (h *Handlers) applyDNSAfterWireGuard(res *wireguard.SaveResult) {
+	if res == nil || !res.Applied {
+		return
+	}
+	if err := h.applyDNSFromDB(); err != nil {
+		if h.svc.Logger != nil {
+			h.svc.Logger.Warn("dns re-apply after wireguard", "err", err)
+		}
+		return
+	}
+	if h.svc.DNS != nil && h.svc.DNS.Status().Running {
+		res.Text += " CoreDNS started."
+	}
 }
 
 func (h *Handlers) wireguardBackupWantsJSON(r *http.Request) bool {
@@ -1741,7 +2195,7 @@ func (h *Handlers) wireguardBackupError(w http.ResponseWriter, r *http.Request, 
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
-	http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(msg), http.StatusFound)
+	http.Redirect(w, r, "/ui/backup?msgType=error&msg="+urlQueryEscape(msg), http.StatusFound)
 }
 
 func (h *Handlers) WireGuardBackupPost(w http.ResponseWriter, r *http.Request) {
@@ -1798,25 +2252,25 @@ func (h *Handlers) parseWireGuardBackupPassword(r *http.Request) (string, error)
 func (h *Handlers) WireGuardRestorePost(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Invalid backup upload."), http.StatusFound)
+		http.Redirect(w, r, "/ui/backup?msgType=error&msg="+urlQueryEscape("Invalid backup upload."), http.StatusFound)
 		return
 	}
 	f, _, err := r.FormFile("backup_file")
 	if err != nil {
-		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Backup file is required."), http.StatusFound)
+		http.Redirect(w, r, "/ui/backup?msgType=error&msg="+urlQueryEscape("Backup file is required."), http.StatusFound)
 		return
 	}
 	defer f.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(f, 32<<20))
 	if err != nil {
-		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape("Could not read backup file."), http.StatusFound)
+		http.Redirect(w, r, "/ui/backup?msgType=error&msg="+urlQueryEscape("Could not read backup file."), http.StatusFound)
 		return
 	}
 	password := strings.TrimSpace(r.FormValue("backup_password"))
 	file, err := wireguard.ParseBackupArchive(raw, password)
 	if err != nil {
-		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		http.Redirect(w, r, "/ui/backup?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
 		return
 	}
 
@@ -1825,11 +2279,11 @@ func (h *Handlers) WireGuardRestorePost(w http.ResponseWriter, r *http.Request) 
 		ReplaceGroups: r.FormValue("replace_groups") == "on",
 	}
 	if err := wireguard.RestoreBackup(h.svc.DB, h.svc.Config.DataDir, h.svc.Config.WGInterface, file, opts); err != nil {
-		http.Redirect(w, r, "/ui/wireguard?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
+		http.Redirect(w, r, "/ui/backup?msgType=error&msg="+urlQueryEscape(err.Error()), http.StatusFound)
 		return
 	}
 	h.reconcilePCQ()
-	http.Redirect(w, r, "/ui/wireguard?msgType=success&msg="+urlQueryEscape("Backup restored and WireGuard restarted."), http.StatusFound)
+	http.Redirect(w, r, "/ui/backup?msgType=success&msg="+urlQueryEscape("Backup restored and WireGuard restarted."), http.StatusFound)
 }
 
 func (h *Handlers) applyWireGuardFromDB() error {
@@ -1882,6 +2336,123 @@ func urlQueryEscape(s string) string {
 	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }
 
+type bwSnap struct {
+	T time.Time
+	D int64
+	U int64
+}
+
+func parseBandwidthTimestamp(ts string) (time.Time, bool) {
+	if t, err := time.Parse(time.RFC3339, ts); err == nil {
+		return t, true
+	}
+	if t, err := time.ParseInLocation("2006-01-02 15:04:05", ts, time.UTC); err == nil {
+		return t, true
+	}
+	return time.Time{}, false
+}
+
+func loadBandwidthSnapshots(dbConn *sql.DB, since time.Time) ([]bwSnap, error) {
+	sinceSQL := since.UTC().Format("2006-01-02 15:04:05")
+	rows, err := dbConn.Query(`
+		SELECT timestamp, download_rate, upload_rate
+		FROM bandwidth_snapshots
+		WHERE timestamp >= ?
+		ORDER BY timestamp ASC
+	`, sinceSQL)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var snaps []bwSnap
+	for rows.Next() {
+		var ts string
+		var d, u int64
+		if err := rows.Scan(&ts, &d, &u); err != nil {
+			return nil, err
+		}
+		t, ok := parseBandwidthTimestamp(ts)
+		if !ok {
+			continue
+		}
+		snaps = append(snaps, bwSnap{T: t, D: d, U: u})
+	}
+	return snaps, rows.Err()
+}
+
+func integrateBandwidthBytes(snaps []bwSnap, maxGap time.Duration) (download, upload int64) {
+	for i := 0; i < len(snaps)-1; i++ {
+		a, b := snaps[i], snaps[i+1]
+		dt := b.T.Sub(a.T)
+		if dt <= 0 {
+			continue
+		}
+		if maxGap > 0 && dt > maxGap {
+			dt = maxGap
+		}
+		sec := int64(dt.Seconds())
+		download += a.D * sec
+		upload += a.U * sec
+	}
+	return download, upload
+}
+
+func bucketBandwidthRates(snaps []bwSnap, bucket time.Duration, loc *time.Location) []map[string]any {
+	if len(snaps) == 0 || bucket <= 0 {
+		return nil
+	}
+	type acc struct {
+		dSum, uSum int64
+		n          int
+	}
+	buckets := map[int64]*acc{}
+	var order []int64
+	for _, s := range snaps {
+		t := s.T.In(loc)
+		key := t.Truncate(bucket).Unix()
+		a, ok := buckets[key]
+		if !ok {
+			a = &acc{}
+			buckets[key] = a
+			order = append(order, key)
+		}
+		a.dSum += s.D
+		a.uSum += s.U
+		a.n++
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+	out := make([]map[string]any, 0, len(order))
+	for _, key := range order {
+		a := buckets[key]
+		if a.n == 0 {
+			continue
+		}
+		t := time.Unix(key, 0).In(loc)
+		out = append(out, map[string]any{
+			"timestamp":    t.Format(time.RFC3339),
+			"label":        t.Format("15:04"),
+			"downloadRate": a.dSum / int64(a.n),
+			"uploadRate":   a.uSum / int64(a.n),
+		})
+	}
+	return out
+}
+
+func peakFromBucketed(bucketed []map[string]any) (peakD, peakU int64) {
+	for _, pt := range bucketed {
+		d, _ := pt["downloadRate"].(int64)
+		u, _ := pt["uploadRate"].(int64)
+		if d > peakD {
+			peakD = d
+		}
+		if u > peakU {
+			peakU = u
+		}
+	}
+	return peakD, peakU
+}
+
 func (h *Handlers) BandwidthHistoryAPI(w http.ResponseWriter, r *http.Request) {
 	mode := strings.TrimSpace(r.URL.Query().Get("mode"))
 	if mode == "" {
@@ -1890,100 +2461,108 @@ func (h *Handlers) BandwidthHistoryAPI(w http.ResponseWriter, r *http.Request) {
 
 	type hourlyPoint struct {
 		Timestamp    string `json:"timestamp"`
+		Label        string `json:"label"`
 		DownloadRate int64  `json:"downloadRate"`
 		UploadRate   int64  `json:"uploadRate"`
 	}
 	type dailyPoint struct {
 		Day           int    `json:"day"`
+		Label         string `json:"label"`
 		Timestamp     string `json:"timestamp"`
 		DownloadTotal int64  `json:"downloadTotal"`
 		UploadTotal   int64  `json:"uploadTotal"`
 		CombinedTotal int64  `json:"combinedTotal"`
+		IsToday       bool   `json:"isToday"`
+	}
+	type summary struct {
+		DownloadTotal     int64 `json:"downloadTotal"`
+		UploadTotal       int64 `json:"uploadTotal"`
+		CombinedTotal     int64 `json:"combinedTotal"`
+		PeakDownloadRate  int64 `json:"peakDownloadRate"`
+		PeakUploadRate    int64 `json:"peakUploadRate"`
+		PeakDailyDownload int64 `json:"peakDailyDownload"`
+		PeakDailyUpload   int64 `json:"peakDailyUpload"`
+		SnapshotCount     int   `json:"snapshotCount"`
+		HasData           bool  `json:"hasData"`
 	}
 
 	now := time.Now()
+	loc := now.Location()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	maxGap := 2 * time.Duration(h.svc.Config.WGInterval) * time.Second
+	if maxGap <= 0 {
+		maxGap = 60 * time.Second
+	}
+
+	writeBW := func(mode string, history any, sum summary) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"mode":    mode,
+			"history": history,
+			"summary": sum,
+		})
+	}
 
 	if mode == "daily" {
-		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-		startSQL := start.UTC().Format("2006-01-02 15:04:05")
-		rows, err := h.svc.DB.Query(`
-			SELECT timestamp, download_rate, upload_rate
-			FROM bandwidth_snapshots
-			WHERE timestamp >= ?
-			ORDER BY timestamp ASC
-		`, startSQL)
+		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+		snaps, err := loadBandwidthSnapshots(h.svc.DB, start)
 		if err != nil {
 			http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 			return
 		}
-		defer rows.Close()
 
-		type snap struct {
-			T time.Time
-			D int64
-			U int64
-		}
-		var snaps []snap
-		for rows.Next() {
-			var ts string
-			var d, u int64
-			if err := rows.Scan(&ts, &d, &u); err != nil {
-				http.Error(w, `{"error":"scan failed"}`, http.StatusInternalServerError)
-				return
-			}
-			t, err := time.Parse(time.RFC3339, ts)
-			if err != nil {
-				// sqlite datetime('now') is not RFC3339; try common layout.
-				t2, err2 := time.ParseInLocation("2006-01-02 15:04:05", ts, time.UTC)
-				if err2 != nil {
-					continue
-				}
-				t = t2
-			}
-			snaps = append(snaps, snap{T: t, D: d, U: u})
-		}
-
-		// Integrate rate over time -> bytes/day.
 		byDayD := map[int]int64{}
 		byDayU := map[int]int64{}
 		for i := 0; i < len(snaps)-1; i++ {
-			a := snaps[i]
-			b := snaps[i+1]
+			a, b := snaps[i], snaps[i+1]
 			dt := b.T.Sub(a.T)
 			if dt <= 0 {
 				continue
 			}
-			// Clamp dt to avoid huge jumps if the service was paused.
-			if dt > 2*time.Duration(h.svc.Config.WGInterval)*time.Second {
-				dt = time.Duration(h.svc.Config.WGInterval) * time.Second
+			if dt > maxGap {
+				dt = maxGap
 			}
 			sec := int64(dt.Seconds())
-			day := a.T.In(now.Location()).Day()
+			day := a.T.In(loc).Day()
 			byDayD[day] += a.D * sec
 			byDayU[day] += a.U * sec
 		}
 
+		today := now.Day()
 		var out []dailyPoint
-		daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
-		for day := 1; day <= daysInMonth; day++ {
-			ts := time.Date(now.Year(), now.Month(), day, 0, 0, 0, 0, now.Location()).Format(time.RFC3339)
+		var sumD, sumU int64
+		var peakDayD, peakDayU int64
+		for day := 1; day <= today; day++ {
 			d := byDayD[day]
 			u := byDayU[day]
+			if d > peakDayD {
+				peakDayD = d
+			}
+			if u > peakDayU {
+				peakDayU = u
+			}
+			sumD += d
+			sumU += u
+			ts := time.Date(now.Year(), now.Month(), day, 0, 0, 0, 0, loc).Format(time.RFC3339)
 			out = append(out, dailyPoint{
 				Day:           day,
+				Label:         strconv.Itoa(day),
 				Timestamp:     ts,
 				DownloadTotal: d,
 				UploadTotal:   u,
 				CombinedTotal: d + u,
+				IsToday:       day == today,
 			})
 		}
 
-		_, _ = w.Write([]byte(`{"history":`))
-		enc := json.NewEncoder(w)
-		_ = enc.Encode(out)
-		// enc adds newline; close json object.
-		_, _ = w.Write([]byte(`}`))
+		writeBW("daily", out, summary{
+			DownloadTotal:     sumD,
+			UploadTotal:       sumU,
+			CombinedTotal:     sumD + sumU,
+			PeakDailyDownload: peakDayD,
+			PeakDailyUpload:   peakDayU,
+			SnapshotCount:     len(snaps),
+			HasData:           len(snaps) > 0,
+		})
 		return
 	}
 
@@ -1994,34 +2573,35 @@ func (h *Handlers) BandwidthHistoryAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	since := now.Add(-time.Duration(hours) * time.Hour)
-	sinceSQL := since.UTC().Format("2006-01-02 15:04:05")
-
-	rows, err := h.svc.DB.Query(`
-		SELECT timestamp, download_rate, upload_rate
-		FROM bandwidth_snapshots
-		WHERE timestamp >= ?
-		ORDER BY timestamp ASC
-	`, sinceSQL)
+	snaps, err := loadBandwidthSnapshots(h.svc.DB, since)
 	if err != nil {
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
+	dTotal, uTotal := integrateBandwidthBytes(snaps, maxGap)
+
+	bucketed := bucketBandwidthRates(snaps, 15*time.Minute, loc)
+	peakD, peakU := peakFromBucketed(bucketed)
 	var out []hourlyPoint
-	for rows.Next() {
-		var ts string
-		var d, u int64
-		if err := rows.Scan(&ts, &d, &u); err != nil {
-			http.Error(w, `{"error":"scan failed"}`, http.StatusInternalServerError)
-			return
-		}
-		out = append(out, hourlyPoint{Timestamp: ts, DownloadRate: d, UploadRate: u})
+	for _, pt := range bucketed {
+		out = append(out, hourlyPoint{
+			Timestamp:    pt["timestamp"].(string),
+			Label:        pt["label"].(string),
+			DownloadRate: pt["downloadRate"].(int64),
+			UploadRate:   pt["uploadRate"].(int64),
+		})
 	}
-	_, _ = w.Write([]byte(`{"history":`))
-	enc := json.NewEncoder(w)
-	_ = enc.Encode(out)
-	_, _ = w.Write([]byte(`}`))
+
+	writeBW("hourly", out, summary{
+		DownloadTotal:    dTotal,
+		UploadTotal:      uTotal,
+		CombinedTotal:    dTotal + uTotal,
+		PeakDownloadRate: peakD,
+		PeakUploadRate:   peakU,
+		SnapshotCount:    len(snaps),
+		HasData:          len(snaps) > 0,
+	})
 }
 
 func (h *Handlers) UIStatsPartial(w http.ResponseWriter, r *http.Request) {

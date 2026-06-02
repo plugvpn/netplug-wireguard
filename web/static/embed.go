@@ -6,12 +6,17 @@ import (
 	"net/http"
 )
 
-const plugIconPath = "plug-icon.png"
+const (
+	plugIconPath      = "plug-icon.png"
+	wireguardIconPath = "wireguard-icon.svg"
+)
 
-//go:embed plug-icon.png
+//go:embed plug-icon.png wireguard-icon.svg
 var raw embed.FS
 
 func PlugIconPath() string { return plugIconPath }
+
+func WireGuardIconPath() string { return wireguardIconPath }
 
 func FS() fs.FS {
 	return raw

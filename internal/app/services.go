@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+
+	"netplug-go/internal/dns"
 )
 
 type Services struct {
@@ -13,6 +15,7 @@ type Services struct {
 	Sessions *scs.SessionManager
 	Config   Config
 	Logger   *slog.Logger // set when NETPLUG_DEBUG JSON logging is enabled
+	DNS      *dns.Manager
 
 	StartedAt time.Time
 }

@@ -1,0 +1,647 @@
+{{define "dns.tmpl"}}
+{{template "base.tmpl" .}}
+{{end}}
+
+{{define "dns.content"}}
+<style>
+  .dns-accent { color: rgb(16 185 129); }
+  .dns-panel-glow {
+    background:
+      radial-gradient(ellipse 70% 50% at 100% 0%, rgba(16, 185, 129, 0.07), transparent 55%),
+      var(--np-panel);
+  }
+  .dns-toggle {
+    position: relative;
+    display: inline-flex;
+    height: 1.5rem;
+    width: 2.75rem;
+    flex-shrink: 0;
+    cursor: pointer;
+    align-items: center;
+    border-radius: 9999px;
+    background: var(--np-muted);
+    transition: background 0.2s ease;
+  }
+  .dns-toggle:has(:checked) { background: rgb(5 150 105); }
+  .dns-toggle input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+  }
+  .dns-toggle__knob {
+    pointer-events: none;
+    margin-left: 2px;
+    height: 1.25rem;
+    width: 1.25rem;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.2s ease;
+  }
+  .dns-toggle:has(:checked) .dns-toggle__knob { transform: translateX(1.25rem); }
+  .dns-status-pulse {
+    animation: dns-pulse 2s ease-in-out infinite;
+  }
+  @keyframes dns-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
+    50% { opacity: 0.85; box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dns-status-pulse { animation: none; }
+  }
+  .dns-rewrites-wrap {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #374151 var(--np-panel);
+  }
+  .dns-rewrites-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+  .dns-rewrites-table th,
+  .dns-rewrites-table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .dns-rewrites-table .dns-rewrites-col-actions {
+    width: 5.5rem;
+    white-space: nowrap;
+  }
+  .dns-rewrites-table .dns-rewrites-col-type {
+    width: 4.5rem;
+    white-space: nowrap;
+  }
+  .dns-rewrites-table .dns-rewrites-col-ttl {
+    width: 4.5rem;
+    white-space: nowrap;
+  }
+  .dns-subnav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgb(107 114 128);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .dns-subnav-link:hover {
+    background: rgb(243 244 246);
+    color: rgb(17 24 39);
+  }
+  html.dark .dns-subnav-link:hover {
+    background: var(--np-muted);
+    color: rgb(243 244 246);
+  }
+  .dns-subnav-link--active {
+    background: rgb(236 253 245);
+    color: rgb(6 78 59);
+  }
+  html.dark .dns-subnav-link--active {
+    background: rgba(16, 185, 129, 0.15);
+    color: rgb(209 250 229);
+  }
+  .dns-panel[hidden] { display: none !important; }
+</style>
+
+<div class="h-full flex flex-col overflow-hidden">
+  {{template "page_header.tmpl" .}}
+  <div class="flex-1 overflow-y-auto">
+    <div class="p-8">
+      <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">DNS</h2>
+            {{template "np_tag_new.tmpl" dict "Text" "New"}}
+          </div>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            CoreDNS resolver for VPN clients — bind address is configurable below
+          </p>
+        </div>
+      </div>
+
+      <div id="dns-sections" class="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8" data-active-section="{{.DNSSection}}">
+        <nav class="dns-subnav shrink-0 lg:w-52" aria-label="DNS sections">
+          <ul class="flex flex-row gap-1 overflow-x-auto pb-1 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
+            <li>
+              <a href="#filtering" class="dns-subnav-link whitespace-nowrap{{if eq .DNSSection "filtering"}} dns-subnav-link--active{{end}}" data-section="filtering">
+                <i data-lucide="shield" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+                Filtering
+              </a>
+            </li>
+            <li>
+              <a href="#rewrites" class="dns-subnav-link whitespace-nowrap{{if eq .DNSSection "rewrites"}} dns-subnav-link--active{{end}}" data-section="rewrites">
+                <i data-lucide="list-tree" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+                DNS rewrites
+              </a>
+            </li>
+            <li>
+              <a href="#rules" class="dns-subnav-link whitespace-nowrap{{if eq .DNSSection "rules"}} dns-subnav-link--active{{end}}" data-section="rules">
+                <i data-lucide="ban" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+                Blocked &amp; allowed domains
+              </a>
+            </li>
+            <li>
+              <a href="#server" class="dns-subnav-link whitespace-nowrap{{if eq .DNSSection "server"}} dns-subnav-link--active{{end}}" data-section="server">
+                <i data-lucide="server" class="h-4 w-4 shrink-0" style="stroke-width:1.5"></i>
+                Server
+              </a>
+            </li>
+          </ul>
+        </nav>
+
+        <div class="min-w-0 flex-1 space-y-6">
+      <form
+        id="dns-form"
+        method="post"
+        action="/ui/dns/save"
+        hx-post="/ui/dns/save"
+        hx-target="#np-main"
+        hx-swap="innerHTML"
+        hx-push-url="/ui/dns#{{.DNSSection}}"
+      >
+        <input type="hidden" name="dns_section" id="dns_section" value="{{.DNSSection}}" />
+        <div id="dns-panel-filtering" class="dns-panel rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none"{{if ne .DNSSection "filtering"}} hidden{{end}}>
+          <div class="mb-6 flex items-center gap-2">
+            <i data-lucide="shield" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Filtering</h3>
+          </div>
+          <p class="mb-6 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+            Block ads and trackers (like x-ui <span class="font-mono text-gray-400">geosite:category-ads-all</span>), block custom domains, or allow exceptions.
+            Lists are refreshed when you save or reload DNS.
+          </p>
+          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div class="space-y-4">
+              <label class="flex items-center justify-between gap-4">
+                <span class="text-sm text-gray-700 dark:text-gray-300">Block ads &amp; trackers</span>
+                <span class="dns-toggle" title="Use community blocklists">
+                  <input type="checkbox" name="dns_block_ads" value="1" {{if .DNS.BlockAdsEnabled}}checked{{end}} />
+                  <span class="dns-toggle__knob" aria-hidden="true"></span>
+                </span>
+              </label>
+              <div>
+                <label for="dns_blocklist_urls" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Blocklist URLs</label>
+                <textarea id="dns_blocklist_urls" name="dns_blocklist_urls" rows="3" placeholder="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+                  class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100">{{.DNS.BlocklistURLs}}</textarea>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">One URL per line. Default StevenBlack list is used when empty.</p>
+              </div>
+              {{template "dns_input.tmpl" dict "Label" "Block response IP" "ID" "dns_block_address" "Value" .DNS.BlockAddress "Placeholder" "0.0.0.0" "Hint" "IP returned for blocked domains (usually 0.0.0.0)." }}
+            </div>
+            <div class="space-y-0">
+              {{template "dns_input.tmpl" dict "Label" "Cache TTL (seconds)" "ID" "dns_cache_ttl" "Type" "number" "Value" .DNS.CacheTTL "Placeholder" "300" "Hint" "How long CoreDNS caches forwarded answers." }}
+              <label class="flex items-center justify-between gap-4 border-b border-gray-100 py-4 dark:border-[rgba(148,163,184,0.06)]">
+                <span class="text-sm text-gray-700 dark:text-gray-300">Log DNS queries</span>
+                <span class="dns-toggle">
+                  <input type="checkbox" name="dns_query_log" value="1" {{if .DNS.QueryLogEnabled}}checked{{end}} />
+                  <span class="dns-toggle__knob" aria-hidden="true"></span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div id="dns-panel-server" class="dns-panel rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none dns-panel-glow"{{if ne .DNSSection "server"}} hidden{{end}}>
+          <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
+            <div>
+              <div class="mb-6 flex items-center gap-2">
+                <i data-lucide="activity" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Service Status</h3>
+              </div>
+
+              <div class="space-y-4">
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">DNS server</span>
+                  <div class="flex items-center gap-2">
+                    <div class="h-2 w-2 rounded-full {{if .DNSStatus.Running}}bg-emerald-500 dns-status-pulse{{else}}bg-gray-500{{end}}"></div>
+                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {{if .DNSStatus.Running}}Running{{else}}Stopped{{end}}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Enabled in config</span>
+                  <label class="dns-toggle" title="Enable DNS server">
+                    <input type="checkbox" name="dns_enabled" value="1" {{if .DNS.Enabled}}checked{{end}} />
+                    <span class="dns-toggle__knob" aria-hidden="true"></span>
+                  </label>
+                </div>
+
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Listen</span>
+                  {{if .DNS.ListenAddr}}
+                  <span class="font-mono text-sm text-emerald-600 dark:text-emerald-400">{{.DNS.ListenAddr}}</span>
+                  {{else}}
+                  <span class="text-sm text-amber-500 dark:text-amber-400">Configure WireGuard server address</span>
+                  {{end}}
+                </div>
+
+                {{if .ListenErr}}
+                <div class="rounded-lg border border-amber-500/35 bg-amber-950/40 px-3 py-2.5">
+                  <p class="text-sm text-amber-200">{{.ListenErr}}</p>
+                </div>
+                {{end}}
+
+                {{if .DNSStatus.PID}}
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Process</span>
+                  <span class="font-mono text-sm text-gray-900 dark:text-gray-100">pid {{.DNSStatus.PID}}</span>
+                </div>
+                {{end}}
+
+                {{if .DNSStatus.Binary}}
+                <div class="flex items-center justify-between gap-4">
+                  <span class="shrink-0 text-sm text-gray-700 dark:text-gray-300">Binary</span>
+                  <span class="min-w-0 break-all text-right font-mono text-xs text-gray-500 dark:text-gray-400">{{.DNSStatus.Binary}}</span>
+                </div>
+                {{end}}
+
+                {{if .DNSStatus.Corefile}}
+                <div class="flex flex-col gap-1 border-t border-gray-200 pt-4 dark:border-[rgba(148,163,184,0.06)]">
+                  <span class="text-sm text-gray-700 dark:text-gray-300">Corefile</span>
+                  <span class="break-all font-mono text-xs text-gray-500 dark:text-gray-400">{{.DNSStatus.Corefile}}</span>
+                </div>
+                {{end}}
+
+                {{if .DNSStatus.LastError}}
+                <div class="rounded-lg border border-amber-500/35 bg-amber-950/40 px-3 py-2.5">
+                  <p class="text-sm text-amber-200">{{.DNSStatus.LastError}}</p>
+                </div>
+                {{end}}
+              </div>
+            </div>
+
+            <div class="lg:border-l lg:border-gray-200 lg:pl-10 dark:lg:border-[rgba(148,163,184,0.06)]">
+              <div class="mb-6 flex items-center gap-2">
+                <i data-lucide="globe-2" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Resolver</h3>
+              </div>
+
+              <p class="mb-6 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                When enabled, NetPlug starts CoreDNS on the listen address. Peers use the <strong>client DNS address</strong> in configs and QR codes — use a dedicated tunnel IP instead of the WireGuard server IP if you prefer.
+              </p>
+
+              <div class="space-y-0">
+                {{template "dns_input.tmpl" dict "Label" "Client DNS address" "ID" "dns_client_dns_host" "Value" .DNS.ClientDNSHost "Placeholder" .ClientDNSPlaceholder "Hint" "IP in client configs (DNS=). Leave blank with listen address to use 169.254.20.10 (link-local, like Kubernetes NodeLocal DNS). NetPlug adds it on the tunnel interface automatically." }}
+                {{if and .DNS.Enabled .ClientDNSAddr}}
+                <p class="border-b border-gray-100 py-2 text-xs text-emerald-600 dark:border-[rgba(148,163,184,0.06)] dark:text-emerald-400">Peers currently use <span class="font-mono">{{.ClientDNSAddr}}</span> for DNS.</p>
+                {{end}}
+                {{template "dns_input.tmpl" dict "Label" "Listen address" "ID" "dns_listen_host" "Value" .DNS.ListenHost "Placeholder" .ListenHostPlaceholder "Hint" "Where CoreDNS binds. Leave blank to use the client DNS address (auto-generated when both are blank)." }}
+                {{template "dns_input.tmpl" dict "Label" "CoreDNS binary" "ID" "dns_binary" "Value" .DNS.Binary "Placeholder" "coredns" "Hint" "Executable name on PATH or full path (default coredns)." }}
+                {{template "dns_input.tmpl" dict "Label" "Listen port" "ID" "dns_listen_port" "Type" "number" "Value" .DNS.ListenPort "Placeholder" "53" "Hint" "Default 53. Use a high port (e.g. 5353) if you cannot bind privileged ports." }}
+                <div class="border-b border-gray-100 py-4 last:border-b-0 dark:border-[rgba(148,163,184,0.06)]">
+                  <label for="dns_upstream_preset" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Upstream preset</label>
+                  <select id="dns_upstream_preset" class="mb-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100">
+                    <option value="">Custom (use field below)</option>
+                    {{range .DNSUpstreamPresets}}
+                    <option value="{{.Value}}">{{.Label}}</option>
+                    {{end}}
+                  </select>
+                </div>
+                {{template "dns_input.tmpl" dict "Label" "Forward upstreams" "ID" "dns_forward_upstreams" "Value" .DNS.ForwardUpstreams "Placeholder" "1.1.1.1 1.0.0.1" "Hint" "Space-separated resolvers (IPv4/IPv6)." }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+
+        <div id="dns-panel-rewrites" class="dns-panel rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none"{{if ne .DNSSection "rewrites"}} hidden{{end}}>
+          <div class="mb-2 flex items-center gap-2">
+            <i data-lucide="list-tree" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">DNS rewrites</h3>
+          </div>
+          <p class="mb-6 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+            Override DNS answers for specific hostnames before forwarding everything else upstream — similar to custom DNS in Pi-hole or AdGuard.
+            Enter the full domain you want to rewrite (e.g. <span class="font-mono text-gray-400">router.vpn</span>).
+          </p>
+
+          {{if .DNSRecords}}
+          <div class="dns-rewrites-wrap mb-6 rounded-lg border border-gray-200 dark:border-[rgba(148,163,184,0.085)]">
+            <table class="dns-rewrites-table divide-y divide-gray-200 text-sm dark:divide-[rgba(148,163,184,0.06)]">
+              <colgroup>
+                <col />
+                <col class="dns-rewrites-col-type" />
+                <col />
+                <col class="dns-rewrites-col-ttl" />
+                <col class="dns-rewrites-col-actions" />
+              </colgroup>
+              <thead class="bg-gray-100/80 dark:bg-[var(--np-muted)]">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Domain</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Type</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Value</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">TTL</th>
+                  <th class="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 bg-white dark:divide-[rgba(148,163,184,0.06)] dark:bg-[var(--np-field)]">
+                {{range .DNSRecords}}
+                <tr>
+                  <td class="px-4 py-3 font-mono text-sm text-gray-900 dark:text-gray-100">{{.Name}}</td>
+                  <td class="px-4 py-3 font-mono text-sm text-emerald-600 dark:text-emerald-400">{{.Type}}</td>
+                  <td class="px-4 py-3 font-mono text-sm text-gray-700 dark:text-gray-300">{{.Value}}</td>
+                  <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{{.TTL}}</td>
+                  <td class="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      class="text-xs font-medium text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
+                      title="Delete rewrite"
+                      hx-post="/ui/dns/records/{{.ID}}/delete"
+                      hx-target="#np-main"
+                      hx-swap="innerHTML"
+                      hx-push-url="/ui/dns#rewrites"
+                      hx-vals='{"dns_section":"rewrites"}'
+                      hx-confirm="Delete this DNS rewrite?"
+                    >Delete</button>
+                  </td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+          {{else}}
+          <p class="mb-6 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 dark:border-[rgba(148,163,184,0.12)] dark:text-gray-400">
+            No DNS rewrites yet. Add an A or AAAA record to point a hostname at a tunnel or LAN IP.
+          </p>
+          {{end}}
+
+          <form
+            id="dns-rewrite-add-form"
+            method="post"
+            action="/ui/dns/records/add"
+            class="rounded-lg border border-gray-200 bg-white p-4 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)]"
+            hx-post="/ui/dns/records/add"
+            hx-target="#np-main"
+            hx-swap="innerHTML"
+            hx-push-url="/ui/dns#rewrites"
+            hx-disabled-elt="find button"
+          >
+            <input type="hidden" name="dns_section" value="rewrites" />
+            <p class="mb-4 text-sm font-medium text-gray-900 dark:text-gray-100">Add rewrite</p>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+              <div class="lg:col-span-3">
+                <label for="record_name" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Domain</label>
+                <input id="record_name" name="record_name" type="text" placeholder="router.vpn" value=""
+                  class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)] dark:text-gray-100" />
+              </div>
+              <div class="lg:col-span-2">
+                <label for="record_type" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                <select id="record_type" name="record_type"
+                  class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)] dark:text-gray-100">
+                  {{range .DNSRecordTypes}}
+                  <option value="{{.}}">{{.}}</option>
+                  {{end}}
+                </select>
+              </div>
+              <div class="lg:col-span-4">
+                <label for="record_value" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Value</label>
+                <input id="record_value" name="record_value" type="text" placeholder="10.8.0.1"
+                  class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)] dark:text-gray-100" />
+              </div>
+              <div class="lg:col-span-1">
+                <label for="record_ttl" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">TTL</label>
+                <input id="record_ttl" name="record_ttl" type="number" placeholder="300" value=""
+                  class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)] dark:text-gray-100" />
+              </div>
+              <div class="lg:col-span-2">
+                <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600/50 bg-emerald-950/30 px-4 py-2 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-950/50">
+                  <i data-lucide="plus" class="h-4 w-4"></i>
+                  Add
+                </button>
+              </div>
+            </div>
+            <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              <span class="font-mono">A</span> / <span class="font-mono">AAAA</span>: IP address.
+              <span class="font-mono">CNAME</span> / <span class="font-mono">NS</span> / <span class="font-mono">PTR</span>: hostname (relative or FQDN).
+              <span class="font-mono">MX</span>: priority and host (e.g. <span class="font-mono">10 mail</span>).
+              <span class="font-mono">TXT</span>: arbitrary text.
+            </p>
+          </form>
+        </div>
+
+        <div id="dns-panel-rules" class="dns-panel rounded border border-gray-200/90 bg-gray-50 p-8 shadow-sm dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)] dark:shadow-none"{{if ne .DNSSection "rules"}} hidden{{end}}>
+          <div class="mb-2 flex items-center gap-2">
+            <i data-lucide="ban" class="h-5 w-5 text-emerald-600 dark:text-emerald-500" style="stroke-width:1.5"></i>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Blocked &amp; allowed domains</h3>
+          </div>
+          <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">Manual rules — allow wins over block (like Pi-hole whitelist).</p>
+          {{if .DNSDomainRules}}
+          <div class="dns-rewrites-wrap mb-4 rounded-lg border border-gray-200 dark:border-[rgba(148,163,184,0.085)]">
+            <table class="dns-rewrites-table text-sm">
+              <thead class="bg-gray-100/80 dark:bg-[var(--np-muted)]">
+                <tr>
+                  <th class="px-4 py-2 text-left font-medium text-gray-700 dark:text-gray-300">Domain</th>
+                  <th class="px-4 py-2 text-left font-medium text-gray-700 dark:text-gray-300">Rule</th>
+                  <th class="px-4 py-2 text-right font-medium text-gray-700 dark:text-gray-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 bg-white dark:divide-[rgba(148,163,184,0.06)] dark:bg-[var(--np-field)]">
+                {{range .DNSDomainRules}}
+                <tr>
+                  <td class="px-4 py-2 font-mono text-sm">{{.Domain}}</td>
+                  <td class="px-4 py-2 text-sm {{if eq .RuleType "allow"}}text-cyan-600 dark:text-cyan-400{{else}}text-red-600 dark:text-red-400{{end}}">{{.RuleType}}</td>
+                  <td class="px-4 py-2 text-right">
+                    <button type="button" class="text-xs font-medium text-red-600 hover:text-red-500" hx-post="/ui/dns/rules/{{.ID}}/delete" hx-target="#np-main" hx-swap="innerHTML" hx-push-url="/ui/dns#rules" hx-vals='{"dns_section":"rules"}' hx-confirm="Delete this rule?">Delete</button>
+                  </td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+          {{end}}
+          <form method="post" action="/ui/dns/rules/add" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)]" hx-post="/ui/dns/rules/add" hx-target="#np-main" hx-swap="innerHTML" hx-push-url="/ui/dns#rules" hx-disabled-elt="find button">
+            <input type="hidden" name="dns_section" value="rules" />
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-12 sm:items-end">
+              <div class="sm:col-span-5">
+                <label for="rule_domain" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Domain</label>
+                <input id="rule_domain" name="rule_domain" type="text" placeholder="ads.example.com" class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)] dark:text-gray-100" />
+              </div>
+              <div class="sm:col-span-3">
+                <label for="rule_type" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Rule</label>
+                <select id="rule_type" name="rule_type" class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-panel)] dark:text-gray-100">
+                  <option value="block">block</option>
+                  <option value="allow">allow</option>
+                </select>
+              </div>
+              <div class="sm:col-span-4">
+                <button type="submit" class="w-full rounded-lg border border-emerald-600/50 bg-emerald-950/30 px-4 py-2 text-sm font-medium text-emerald-400">Add rule</button>
+              </div>
+            </div>
+          </form>
+        </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="border-t border-gray-200/90 bg-gray-50 px-8 py-4 dark:border-[rgba(148,163,184,0.055)] dark:bg-[var(--np-panel)]">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div class="flex flex-wrap items-center gap-4">
+          <button id="dns-saveBtn" type="submit" form="dns-form" class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-semibold text-white transition-all hover:from-emerald-600 hover:to-teal-600 disabled:cursor-not-allowed disabled:opacity-50">
+            <i data-lucide="save" class="h-4 w-4"></i>
+            Save Changes
+          </button>
+          <form method="post" action="/ui/dns/reload" hx-post="/ui/dns/reload" hx-target="#np-main" hx-swap="innerHTML" hx-push-url="/ui/dns#filtering" hx-on::before-request="this.setAttribute('hx-push-url', '/ui/dns#' + (window.npCurrentDNSSection ? window.npCurrentDNSSection() : 'filtering'))" title="Restart CoreDNS using saved settings">
+            <button type="submit" class="flex items-center gap-2 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-[rgba(148,163,184,0.085)] dark:text-gray-300 dark:hover:bg-[var(--np-muted)]">
+              <i data-lucide="rotate-cw" class="h-4 w-4"></i>
+              Reload
+            </button>
+          </form>
+        </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {{if .DNS.ListenAddr}}Save Changes writes server address, port, binary, and upstreams (bind <span class="font-mono">{{.DNS.ListenAddr}}</span>). Reload reapplies saved settings.{{else}}Set a server address or configure WireGuard, then save resolver options.{{end}}
+        </p>
+      </div>
+      {{if .SaveMessage}}
+        <div class="text-sm font-medium {{if eq .SaveMessageType "success"}}text-emerald-600 dark:text-emerald-500{{else if eq .SaveMessageType "warning"}}text-amber-600 dark:text-amber-500{{else}}text-red-600 dark:text-red-500{{end}}">
+          {{.SaveMessage}}
+        </div>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{if .SaveMessage}}
+<script>
+  (function () {
+    var type = {{if eq .SaveMessageType "error"}}"danger"{{else if eq .SaveMessageType "warning"}}"warning"{{else}}"success"{{end}};
+    var message = {{printf "%q" .SaveMessage}};
+    document.body.dispatchEvent(new CustomEvent("toast", { bubbles: true, detail: { type: type, message: message } }));
+  })();
+</script>
+{{end}}
+<script>
+  (function () {
+    var DNS_SECTIONS = ["filtering", "rewrites", "rules", "server"];
+    var DNS_DEFAULT_SECTION = "filtering";
+
+    function currentDNSSection() {
+      var active = document.querySelector(".dns-subnav-link--active");
+      return active && active.dataset.section ? active.dataset.section : DNS_DEFAULT_SECTION;
+    }
+    window.npCurrentDNSSection = currentDNSSection;
+
+    function showDNSSection(section, root) {
+      if (!root) root = document.getElementById("dns-sections");
+      if (!root) return;
+      if (DNS_SECTIONS.indexOf(section) < 0) section = DNS_DEFAULT_SECTION;
+      root.querySelectorAll(".dns-panel").forEach(function (panel) {
+        panel.hidden = panel.id !== "dns-panel-" + section;
+      });
+      root.querySelectorAll(".dns-subnav-link").forEach(function (link) {
+        link.classList.toggle("dns-subnav-link--active", link.dataset.section === section);
+      });
+      root.dataset.activeSection = section;
+      var hash = "#" + section;
+      if (window.location.hash !== hash) {
+        try {
+          history.replaceState(null, "", "/ui/dns" + hash);
+        } catch (e) {}
+      }
+      var form = document.getElementById("dns-form");
+      if (form) {
+        form.setAttribute("hx-push-url", "/ui/dns#" + section);
+      }
+      var secInput = document.getElementById("dns_section");
+      if (secInput) secInput.value = section;
+    }
+
+    function initDNSSections() {
+      var root = document.getElementById("dns-sections");
+      if (!root) return;
+      if (!root.dataset.navBound) {
+        root.dataset.navBound = "1";
+        root.addEventListener("click", function (e) {
+          var link = e.target.closest(".dns-subnav-link");
+          if (!link || !root.contains(link)) return;
+          e.preventDefault();
+          showDNSSection(link.dataset.section || DNS_DEFAULT_SECTION, root);
+        });
+      }
+      var hash = (window.location.hash || "").replace(/^#/, "");
+      var initial = root.dataset.activeSection || DNS_DEFAULT_SECTION;
+      if (hash && DNS_SECTIONS.indexOf(hash) >= 0) {
+        showDNSSection(hash, root);
+      } else {
+        showDNSSection(initial, root);
+      }
+    }
+
+    function initDNSForm() {
+      var form = document.getElementById("dns-form");
+      if (!form || form.dataset.dnsBound === "1") return;
+      form.dataset.dnsBound = "1";
+      form.addEventListener("change", function (e) {
+        if (!e.target || e.target.name !== "dns_enabled") return;
+        document.body.dispatchEvent(
+          new CustomEvent("toast", {
+            bubbles: true,
+            detail: { type: "info", message: "Applying DNS settings…" },
+          })
+        );
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      });
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        initDNSSections();
+        initDNSForm();
+      });
+    } else {
+      initDNSSections();
+      initDNSForm();
+    }
+    window.addEventListener("hashchange", function () {
+      var root = document.getElementById("dns-sections");
+      if (!root) return;
+      var hash = (window.location.hash || "").replace(/^#/, "");
+      if (hash && DNS_SECTIONS.indexOf(hash) >= 0) showDNSSection(hash, root);
+    });
+    document.body.addEventListener("htmx:afterSwap", function () {
+      initDNSSections();
+      initDNSForm();
+    });
+
+    function initDNSUpstreamPreset() {
+      var sel = document.getElementById("dns_upstream_preset");
+      var inp = document.getElementById("dns_forward_upstreams");
+      if (!sel || !inp || sel.dataset.bound === "1") return;
+      sel.dataset.bound = "1";
+      sel.addEventListener("change", function () {
+        if (sel.value) inp.value = sel.value;
+      });
+    }
+    initDNSUpstreamPreset();
+    document.body.addEventListener("htmx:afterSwap", initDNSUpstreamPreset);
+  })();
+</script>
+{{end}}
+
+{{define "dns.header_right"}}{{end}}
+
+{{define "dns_input.tmpl"}}
+<div class="border-b border-gray-100 py-4 last:border-b-0 dark:border-[rgba(148,163,184,0.06)]">
+  <label for="{{.ID}}" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{.Label}}</label>
+  <input
+    id="{{.ID}}"
+    name="{{.ID}}"
+    type="{{if .Type}}{{.Type}}{{else}}text{{end}}"
+    value="{{.Value}}"
+    placeholder="{{.Placeholder}}"
+    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-[rgba(148,163,184,0.085)] dark:bg-[var(--np-field)] dark:text-gray-100 dark:focus:border-emerald-600"
+  />
+  {{if .Hint}}<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{.Hint}}</p>{{end}}
+</div>
+{{end}}

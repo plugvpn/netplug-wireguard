@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .np-tag-new {
+    @apply inline-flex items-center rounded-md border border-emerald-500 bg-emerald-950/60 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-emerald-300;
+  }
+}

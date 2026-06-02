@@ -67,6 +67,11 @@ func confPathFor(dataDir string) string {
 	return filepath.Join(dataDir, "wg0.conf")
 }
 
+// ActiveWireGuardInterface returns the running WireGuard interface name for this server.
+func ActiveWireGuardInterface(dataDir, configuredInterface string) string {
+	return activeInterface(confPathFor(dataDir), configuredInterface)
+}
+
 func interfaceFromConf(confPath string) string {
 	base := filepath.Base(confPath)
 	ext := filepath.Ext(base)

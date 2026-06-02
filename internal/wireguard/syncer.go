@@ -327,14 +327,14 @@ func (s *Syncer) syncOnce(ctx context.Context) error {
 		return err
 	}
 
-	// snapshot + cleanup (keep 24h)
+	// snapshot + cleanup (keep ~35 days for monthly dashboard charts)
 	_, _ = tx.ExecContext(ctx, `
 		INSERT INTO bandwidth_snapshots (id, download_rate, upload_rate, timestamp)
 		VALUES (?, ?, ?, datetime('now'))
 	`, uuid.NewString(), totalDownloadRate, totalUploadRate)
 	_, _ = tx.ExecContext(ctx, `
 		DELETE FROM bandwidth_snapshots
-		WHERE timestamp < datetime('now', '-24 hours')
+		WHERE timestamp < datetime('now', '-35 days')
 	`)
 
 	return tx.Commit()
