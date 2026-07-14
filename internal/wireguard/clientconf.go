@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"netplug-go/internal/db"
@@ -82,8 +83,9 @@ func RenderClientConfig(sqlDB *sql.DB, userID string) (configText string, filena
 	if allowed == "" {
 		allowed = "0.0.0.0/0, ::/0"
 	}
-	if clientDNS != "" && IsLinkLocalDNSHost(clientDNS) {
-		allowed = ensureAllowedContains(allowed, clientDNS+"/32")
+	serverDNSHost, _ := DNSServerHost(sqlDB)
+	if routePrefix := resolverHostRoutePrefix(clientDNS, serverDNSHost); routePrefix != "" {
+		allowed = ensureAllowedContains(allowed, routePrefix)
 	}
 
 	var b strings.Builder
@@ -130,3 +132,21 @@ func ensureAllowedContains(allowed, prefix string) string {
 	return allowed + ", " + prefix
 }
 
+func resolverHostRoutePrefix(resolverHost, serverHost string) string {
+	resolverIP := net.ParseIP(strings.TrimSpace(resolverHost))
+	if resolverIP == nil {
+		return ""
+	}
+	prefix := "/32"
+	if resolverIP.To4() == nil {
+		prefix = "/128"
+	}
+	if IsLinkLocalDNSHost(resolverHost) {
+		return resolverIP.String() + prefix
+	}
+	serverIP := net.ParseIP(strings.TrimSpace(serverHost))
+	if serverIP != nil && resolverIP.Equal(serverIP) {
+		return resolverIP.String() + prefix
+	}
+	return ""
+}

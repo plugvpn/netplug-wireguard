@@ -289,7 +289,7 @@
               </p>
 
               <div class="space-y-0">
-                {{template "dns_input.tmpl" dict "Label" "Client DNS address" "ID" "dns_client_dns_host" "Value" .DNS.ClientDNSHost "Placeholder" .ClientDNSPlaceholder "Hint" "IP in client configs (DNS=). Leave blank with listen address to use 169.254.20.10 (link-local, like Kubernetes NodeLocal DNS). NetPlug adds it on the tunnel interface automatically." }}
+                {{template "dns_input.tmpl" dict "Label" "Client DNS address" "ID" "dns_client_dns_host" "Value" .DNS.ClientDNSHost "Placeholder" .ClientDNSPlaceholder "Hint" "IP in client configs (DNS=). Leave blank with listen address to use the WireGuard server IP." }}
                 {{if and .DNS.Enabled .ClientDNSAddr}}
                 <p class="border-b border-gray-100 py-2 text-xs text-emerald-600 dark:border-[rgba(148,163,184,0.06)] dark:text-emerald-400">Peers currently use <span class="font-mono">{{.ClientDNSAddr}}</span> for DNS.</p>
                 {{end}}

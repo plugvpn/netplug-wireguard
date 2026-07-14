@@ -64,8 +64,12 @@ func DNSListenAddress(sqlDB *sql.DB, port int) (string, error) {
 	return ResolveDNSListenAddress(sqlDB, db.DNSSettings{ListenPort: port})
 }
 
-// SuggestDedicatedDNSHost returns the recommended link-local resolver IP for the DNS UI.
-func SuggestDedicatedDNSHost(string) string {
+// SuggestDedicatedDNSHost returns the recommended resolver host for the DNS UI.
+func SuggestDedicatedDNSHost(serverHost string) string {
+	serverHost = strings.TrimSpace(serverHost)
+	if serverHost != "" {
+		return serverHost
+	}
 	return DefaultAutoDNSHost
 }
 

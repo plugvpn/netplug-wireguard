@@ -9,7 +9,7 @@ import (
 	"netplug-go/internal/db"
 )
 
-// DefaultAutoDNSHost is the link-local resolver IP (same default as Kubernetes NodeLocal DNSCache).
+// DefaultAutoDNSHost is the fallback resolver IP when WireGuard server IP is unavailable.
 const DefaultAutoDNSHost = "169.254.20.10"
 
 var linkLocalDNSNet = func() *net.IPNet {
@@ -26,7 +26,7 @@ func IsLinkLocalDNSHost(ip string) bool {
 	return linkLocalDNSNet.Contains(parsed.To4())
 }
 
-// DefaultAutoDNSHostIP returns the dedicated link-local DNS IP used when fields are left blank.
+// DefaultAutoDNSHostIP returns the fallback DNS IP used when server address cannot be read.
 func DefaultAutoDNSHostIP() string {
 	return DefaultAutoDNSHost
 }
@@ -38,21 +38,29 @@ func TryDNSServerHost(sqlDB *sql.DB) (string, bool) {
 }
 
 // EnsureAutoDNSHost assigns ClientDNSHost when client and listen addresses are blank.
-// Uses 169.254.20.10 (link-local, NodeLocal DNS convention), not the WireGuard 10.x subnet.
+// Prefers the WireGuard server IP so clients can always reach the resolver through the tunnel.
 func EnsureAutoDNSHost(sqlDB *sql.DB, s *db.DNSSettings) (bool, error) {
 	if s == nil {
 		return false, errors.New("dns settings is nil")
 	}
-	if strings.TrimSpace(s.ClientDNSHost) != "" || strings.TrimSpace(s.ListenHost) != "" {
+	clientHost := strings.TrimSpace(s.ClientDNSHost)
+	listenHost := strings.TrimSpace(s.ListenHost)
+	storedListenHost := hostFromStoredListenAddr(s.ListenAddr)
+	legacyAutoLinkLocal := clientHost == DefaultAutoDNSHost && listenHost == "" && storedListenHost == ""
+	if (clientHost != "" || listenHost != "" || storedListenHost != "") && !legacyAutoLinkLocal {
 		return false, nil
 	}
-	if hostFromStoredListenAddr(s.ListenAddr) != "" {
+	autoHost := allocateAutoDNSHost(sqlDB)
+	if clientHost == autoHost {
 		return false, nil
 	}
-	s.ClientDNSHost = allocateDedicatedDNSHost()
+	s.ClientDNSHost = autoHost
 	return true, nil
 }
 
-func allocateDedicatedDNSHost() string {
+func allocateAutoDNSHost(sqlDB *sql.DB) string {
+	if host, ok := TryDNSServerHost(sqlDB); ok {
+		return host
+	}
 	return DefaultAutoDNSHost
 }

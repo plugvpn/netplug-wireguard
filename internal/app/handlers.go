@@ -1776,7 +1776,10 @@ func (h *Handlers) renderDNSPage(w http.ResponseWriter, r *http.Request, saveMes
 		dnsCfg.ListenAddr = listen
 	}
 	wgDefaultHost, _ := wireguard.DNSServerHost(h.svc.DB)
-	clientDNSPlaceholder := wireguard.DefaultAutoDNSHost
+	clientDNSPlaceholder := wireguard.SuggestDedicatedDNSHost(wgDefaultHost)
+	if clientDNSPlaceholder == "" {
+		clientDNSPlaceholder = "10.8.0.1"
+	}
 	listenHostPlaceholder := wgDefaultHost
 	if listenHostPlaceholder == "" {
 		listenHostPlaceholder = "10.8.0.1"
@@ -1956,7 +1959,7 @@ func (h *Handlers) DNSSavePost(w http.ResponseWriter, r *http.Request) {
 				msg = fmt.Sprintf("DNS enabled — CoreDNS running on %s.", st.ListenAddr)
 			}
 			if autoDNSHost != "" {
-				msg += fmt.Sprintf(" Assigned client DNS %s (WireGuard server address not set).", autoDNSHost)
+				msg += fmt.Sprintf(" Assigned client DNS %s automatically.", autoDNSHost)
 			}
 		} else {
 			msg = "DNS enabled in config, but CoreDNS is not running. Check the error below."

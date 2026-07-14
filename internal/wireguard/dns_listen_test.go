@@ -111,7 +111,10 @@ func TestClientDNS_dedicatedHost(t *testing.T) {
 }
 
 func TestSuggestDedicatedDNSHost(t *testing.T) {
-	if got := SuggestDedicatedDNSHost("10.8.0.1"); got != DefaultAutoDNSHost {
+	if got := SuggestDedicatedDNSHost("10.8.0.1"); got != "10.8.0.1" {
+		t.Fatalf("got %q want %q", got, "10.8.0.1")
+	}
+	if got := SuggestDedicatedDNSHost(""); got != DefaultAutoDNSHost {
 		t.Fatalf("got %q want %q", got, DefaultAutoDNSHost)
 	}
 }
