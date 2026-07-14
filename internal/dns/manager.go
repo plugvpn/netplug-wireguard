@@ -274,7 +274,6 @@ func renderCorefile(host, port string, cfg db.DNSSettings, files zoneFiles) stri
 	bindLine := ""
 	rootZone := ".:" + port
 	if host != "" && host != "0.0.0.0" && host != "::" {
-		rootZone = host + ":" + port
 		bindLine = "    bind " + host + "\n"
 	}
 	var blocks strings.Builder
@@ -283,9 +282,6 @@ func renderCorefile(host, port string, cfg db.DNSSettings, files zoneFiles) stri
 			continue
 		}
 		zoneListen := zb.zone + ":" + port
-		if host != "" && host != "0.0.0.0" && host != "::" {
-			zoneListen = host + ":" + port
-		}
 		fmt.Fprintf(&blocks, `%s {
 %s    file %s
     log

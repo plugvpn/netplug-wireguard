@@ -50,11 +50,11 @@ func TestRenderCorefile(t *testing.T) {
 		rewriteHosts: hosts,
 		zoneBlocks:   []rewriteZone{{zone: "vpn", file: zoneFile}},
 	})
-	if !strings.Contains(body, "10.8.0.1:53") || !strings.Contains(body, "log") {
+	if !strings.Contains(body, ".:53") || !strings.Contains(body, "vpn:53") || !strings.Contains(body, "bind 10.8.0.1") || !strings.Contains(body, "log") {
 		t.Fatalf("unexpected corefile for server IP:\n%s", body)
 	}
 	body = renderCorefile("169.254.20.10", "53", cfg, zoneFiles{})
-	if !strings.Contains(body, "169.254.20.10:53") {
+	if !strings.Contains(body, ".:53") || !strings.Contains(body, "bind 169.254.20.10") {
 		t.Fatalf("expected link-local listen in corefile:\n%s", body)
 	}
 }
