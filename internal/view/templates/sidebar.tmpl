@@ -63,7 +63,7 @@
       {{template "sidebar_item.tmpl" dict "Href" "/ui/queues" "Label" "Queues" "Icon" "sliders-horizontal" "Active" (or (eq .Path "/ui/queues") (hasPrefix .Path "/ui/queues/")) }}
       {{end}}
       {{template "sidebar_item.tmpl" dict "Href" "/ui/wireguard" "Label" "Wireguard" "WireGuardIcon" true "Active" (eq .Path "/ui/wireguard") }}
-      {{template "sidebar_item.tmpl" dict "Href" "/ui/dns#filtering" "Label" "DNS" "Icon" "globe-2" "Active" (eq .Path "/ui/dns") "Badge" "New" }}
+      {{template "sidebar_item.tmpl" dict "Href" "/ui/dns#filtering" "Label" "DNS" "Icon" "globe-2" "Active" (eq .Path "/ui/dns") }}
     </div>
   </nav>
 
